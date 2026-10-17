@@ -158,7 +158,7 @@ return prisma.$transaction(async (tx) => {
 - Services are plain objects of functions (`export const chatService = { … }`) importing repositories directly. No DI container or classes. Test seams come from Testcontainers and MSW, not mocks [Decision].
 
 ### 10.2 Other backend rules
-- **Prisma migrations**: never edit an applied migration; raw SQL (partial unique, GIN, tsvector) goes inside migrations; each migration folder has a `README.md` with forward/rollback/compat notes. One `PrismaClient` singleton in `lib/db.ts`.
+- **Prisma migrations**: never edit an applied migration; raw SQL (partial unique, GIN, tsvector) goes inside migrations; each `migration.sql` opens with a comment header of forward/rollback/compat notes. One `PrismaClient` singleton in `lib/db.ts`.
 - **Trigger.dev tasks** (`*.task.ts`): thin. They call services; never repositories or Prisma directly. Must be safe to retry from any point; declare `queue`, `concurrencyKey`, `maxDuration`, `retry` explicitly.
 - **Tools** (`*.tool.ts`): one file per tool via `defineTool({...})`; pure with respect to chat state (return data, never write messages or runs; read through services or providers, never repositories). Input/output Zod schemas, `estimateCredits`, optional `requiresApproval`, `sanitize`.
 - **Skills**: `agent-skills/<kebab-name>/SKILL.md` with YAML `name` + `description`; bodies are guidance only.

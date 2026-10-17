@@ -36,7 +36,7 @@ Required before every commit: `pnpm typecheck && pnpm lint && pnpm test`.
 ```
 packages/contracts/    Zod source of truth: api, messages, content blocks, tools, realtime metadata, webhooks, errors
 agent-skills/<name>/   SKILL.md (YAML name+description) + optional guides/assets
-prisma/                schema.prisma, migrations/ (each with README: forward/rollback/compat notes)
+prisma/                schema.prisma, migrations/ (each migration.sql opens with forward/rollback/compat notes)
 src/app/api/v1/        route.ts files: wiring only (re-export controller handlers)
 src/app/api/webhooks/  route.ts wiring → modules/webhooks/*.controller.ts (signature-verified, deduped)
 src/modules/<feature>/ <x>.controller.ts · <x>.service.ts · <x>.repository.ts · <x>.mapper.ts · __tests__/
