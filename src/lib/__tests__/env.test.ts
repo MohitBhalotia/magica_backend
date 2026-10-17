@@ -6,6 +6,8 @@ const base = {
   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_test_x",
   CLERK_SECRET_KEY: "sk_test_x",
   FRONTEND_ORIGINS: "http://localhost:3000",
+  UPSTASH_REDIS_URL: "https://x.upstash.io",
+  UPSTASH_REDIS_TOKEN: "t",
 };
 
 describe("EnvSchema", () => {

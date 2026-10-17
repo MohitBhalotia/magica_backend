@@ -10,6 +10,9 @@ export default defineConfig({
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_test_dummy",
       CLERK_SECRET_KEY: "sk_test_dummy",
       FRONTEND_ORIGINS: "http://localhost:3000",
+      UPSTASH_REDIS_URL: "https://dummy.upstash.io",
+      UPSTASH_REDIS_TOKEN: "dummy",
+      LOG_LEVEL: "silent",
     },
     projects: [
       {
