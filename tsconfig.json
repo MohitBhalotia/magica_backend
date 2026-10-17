@@ -15,8 +15,16 @@
     "resolveJsonModule": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "plugins": [{ "name": "next" }],
-    "paths": { "@/*": ["./src/*"] }
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "allowJs": true,
+    "esModuleInterop": true
   },
   "include": [
     "next-env.d.ts",
