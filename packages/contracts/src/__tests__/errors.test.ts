@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ErrorCodeSchema, ErrorEnvelopeSchema, errorStatus } from "../errors.js";
+import { ErrorCodeSchema, ErrorEnvelopeSchema, errorStatus } from "../errors.ts";
 
 describe("errors", () => {
   it("maps every error code to an HTTP error status", () => {

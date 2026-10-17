@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { HealthResponseSchema } from "../health.js";
+import { HealthResponseSchema } from "../health.ts";
 
 describe("HealthResponseSchema", () => {
   it("accepts an ISO timestamp", () => {

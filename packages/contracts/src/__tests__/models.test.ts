@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ModelIdSchema } from "../models.js";
+import { ModelIdSchema } from "../models.ts";
 
 describe("ModelIdSchema", () => {
   it("accepts openrouter/free", () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { PageQuerySchema, pageSchema } from "../pagination.js";
+import { PageQuerySchema, pageSchema } from "../pagination.ts";
 
 describe("PageQuerySchema", () => {
   it("defaults limit to 20", () => {

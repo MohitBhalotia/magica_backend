@@ -9,6 +9,9 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "declaration": true,
+    // source imports `./x.ts` (Turbopack resolves them); emit rewrites to `./x.js` for dist/
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
     "rootDir": "src",
     "outDir": "dist"
   },
