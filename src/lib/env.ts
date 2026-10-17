@@ -15,6 +15,8 @@ export const EnvSchema = z.object({
     .string()
     .transform((v) => v.split(",").map((o) => o.trim()))
     .pipe(z.array(z.url()).min(1)),
+  // Neon pooled endpoint for the app (DEC-016). DIRECT_URL is CLI-only (prisma.config.ts).
+  DATABASE_URL: z.url(),
   // Upstash REST endpoint: rate-limit counters only (DEC-006).
   UPSTASH_REDIS_URL: z.url(),
   UPSTASH_REDIS_TOKEN: z.string().min(1),
