@@ -19,6 +19,8 @@
     "test:int": "vitest run --project int",
     "test:coverage": "vitest run --project unit --coverage",
     "test:live": "echo \"not yet (M3)\"",
+    "contracts:build": "pnpm --filter @agent-chat/contracts build",
+    "contracts:publish": "pnpm contracts:build && pnpm --filter @agent-chat/contracts publish --no-git-checks",
     "openapi": "echo \"not yet (M7)\"",
     "docs:dev": "echo \"not yet (M7)\"",
     "prepare": "husky"
@@ -31,6 +33,7 @@
     "*.{json,yaml,yml,css}": "prettier --write"
   },
   "dependencies": {
+    "@agent-chat/contracts": "workspace:*",
     "next": "16.4.2",
     "react": "19.3.1",
     "react-dom": "19.3.1",
