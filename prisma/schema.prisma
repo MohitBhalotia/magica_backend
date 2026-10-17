@@ -1,0 +1,221 @@
+// Core schema v1 (DEC-038). ToolInvocation, RunSkill, Waitpoint, Attachment, Asset, ApiKey and
+// webhook tables arrive as additive migrations in the milestone that uses them.
+
+generator client {
+  provider        = "prisma-client"
+  output          = "./generated"
+  previewFeatures = ["partialIndexes"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// id is the Clerk user id, so auth() gives us the key directly; no lookup table.
+model User {
+  id        String   @id
+  email     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  creditAccount CreditAccount?
+  chats         Chat[]
+  ledger        CreditLedger[]
+
+  @@map("users")
+}
+
+enum TitleSource {
+  placeholder // "New chat" until the first prompt arrives
+  prompt // truncated first prompt
+  generated // AI title from a background task
+  user // renamed by the user; never overwritten
+
+  @@map("title_source")
+}
+
+model Chat {
+  id          String                   @id @default(cuid())
+  userId      String                   @map("user_id")
+  title       String                   @default("New chat")
+  titleSource TitleSource              @default(placeholder) @map("title_source")
+  isPinned    Boolean                  @default(false) @map("is_pinned")
+  pinnedAt    DateTime?                @map("pinned_at")
+  /// Soft delete; a cron hard-purges later (PRD §6.1).
+  deletedAt   DateTime?                @map("deleted_at")
+  createdAt   DateTime                 @default(now()) @map("created_at")
+  updatedAt   DateTime                 @updatedAt @map("updated_at")
+  /// Generated column (written in the migration SQL): to_tsvector('simple', title).
+  titleTsv    Unsupported("tsvector")? @default(dbgenerated("to_tsvector('simple'::regconfig, title)")) @map("title_tsv")
+
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
+  runs     AgentRun[]
+
+  /// Target of the (chatId, userId) ownership FKs on messages and runs.
+  @@unique([id, userId])
+  /// Sidebar list: pinned first, then most recent, with a stable cursor.
+  @@index([userId, isPinned, updatedAt, id])
+  @@index([userId, createdAt, id])
+  /// Full-text title search and fuzzy/prefix title search (pg_trgm).
+  @@index([titleTsv], type: Gin)
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "chats_title_trgm_idx")
+  @@map("chats")
+}
+
+/// Cached balance for fast reads and admission checks; CreditLedger is authoritative.
+model CreditAccount {
+  id                 String   @id @default(cuid())
+  /// Nullable so deleting a user keeps the account row for audit (SetNull below).
+  userId             String?  @unique @map("user_id")
+  balanceMicro       BigInt   @default(0) @map("balance_micro")
+  monthlyUploadBytes BigInt   @default(0) @map("monthly_upload_bytes")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("credit_accounts")
+}
+
+enum MessageRole {
+  user
+  assistant
+  system
+  tool
+
+  @@map("message_role")
+}
+
+enum MessageStatus {
+  pending // created, run not started
+  streaming // assistant text arriving
+  success
+  failed
+  cancelled
+
+  @@map("message_status")
+}
+
+model Message {
+  id              String                   @id @default(cuid())
+  chatId          String                   @map("chat_id")
+  userId          String                   @map("user_id")
+  role            MessageRole
+  status          MessageStatus            @default(pending)
+  /// Ordered content blocks, validated by the contracts union before every write.
+  contentBlocks   Json                     @default("[]") @map("content_blocks")
+  /// Plain text denormalised from contentBlocks, for search and previews.
+  text            String                   @default("")
+  /// Client-generated id: a retried POST returns the same message instead of a duplicate.
+  clientMessageId String?                  @map("client_message_id")
+  /// The run that produced (assistant) or consumed (user) this message.
+  runId           String?                  @map("run_id")
+  creditUsedMicro BigInt                   @default(0) @map("credit_used_micro")
+  tokenUsage      Json?                    @map("token_usage")
+  routedModel     String?                  @map("routed_model")
+  errorCode       String?                  @map("error_code")
+  errorMessage    String?                  @map("error_message")
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  completedAt     DateTime?                @map("completed_at")
+  /// Generated column (written in the migration SQL): to_tsvector('simple', text).
+  textTsv         Unsupported("tsvector")? @default(dbgenerated("to_tsvector('simple'::regconfig, text)")) @map("text_tsv")
+
+  /// Ownership FK: the message's user must own the chat.
+  chat          Chat       @relation(fields: [chatId, userId], references: [id, userId], onDelete: Cascade)
+  run           AgentRun?  @relation("RunMessages", fields: [runId], references: [id], onDelete: SetNull)
+  userRuns      AgentRun[] @relation("RunUserMessage")
+  assistantRuns AgentRun[] @relation("RunAssistantMessage")
+
+  @@unique([chatId, clientMessageId])
+  /// History: newest first, `before` cursor for older pages.
+  @@index([chatId, createdAt, id])
+  @@index([textTsv], type: Gin)
+  @@map("messages")
+}
+
+/// queued → thinking → working ⇄ waiting → completed | failed | cancelled; stopping on user Stop.
+enum RunStatus {
+  queued
+  thinking
+  working
+  waiting // paused on a human waitpoint
+  stopping
+  completed
+  failed
+  cancelled
+
+  @@map("run_status")
+}
+
+/// One durable agent turn (a Trigger.dev task run).
+model AgentRun {
+  id                 String    @id @default(cuid())
+  chatId             String    @map("chat_id")
+  userId             String    @map("user_id")
+  userMessageId      String    @map("user_message_id")
+  assistantMessageId String    @map("assistant_message_id")
+  status             RunStatus @default(queued)
+  triggerRunId       String?   @map("trigger_run_id")
+  /// Idempotent dispatch: the same key can never create a second run.
+  dispatchKey        String    @unique @map("dispatch_key")
+  attempt            Int       @default(1)
+  routedModel        String?   @map("routed_model")
+  turns              Int       @default(0)
+  thinkingMs         Int       @default(0) @map("thinking_ms")
+  startedAt          DateTime? @map("started_at")
+  finishedAt         DateTime? @map("finished_at")
+  errorCode          String?   @map("error_code")
+  errorMessage       String?   @map("error_message")
+  traceId            String    @map("trace_id")
+  /// Everything needed to re-dispatch if the trigger was lost (sweeper recovery).
+  dispatchPayload    Json      @map("dispatch_payload")
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  /// Ownership FK: the run's user must own the chat.
+  chat             Chat           @relation(fields: [chatId, userId], references: [id, userId], onDelete: Cascade)
+  userMessage      Message        @relation("RunUserMessage", fields: [userMessageId], references: [id], onDelete: Cascade)
+  assistantMessage Message        @relation("RunAssistantMessage", fields: [assistantMessageId], references: [id], onDelete: Cascade)
+  messages         Message[]      @relation("RunMessages")
+  ledger           CreditLedger[]
+
+  /// The lock behind "one active run per chat": a second active run is a unique violation.
+  /// Predicate is written in Postgres' normalised form (status IN (...) is stored as = ANY), else Prisma sees drift.
+  @@unique([chatId], where: raw("(status = ANY (ARRAY['queued'::run_status, 'thinking'::run_status, 'working'::run_status, 'waiting'::run_status, 'stopping'::run_status]))"), map: "agent_runs_one_active_per_chat")
+  /// Stale-run sweeper: finds active runs older than a threshold.
+  @@index([status, createdAt])
+  @@map("agent_runs")
+}
+
+enum LedgerType {
+  grant // credits added (seed grant on sign-up)
+  reserve // held before work (negative)
+  release // unused reserve returned (positive)
+  charge // actual tool cost (negative)
+  refund // money back for failed work (positive)
+
+  @@map("ledger_type")
+}
+
+/// Append-only; the authoritative record of every credit change. Balance = SUM(amountMicro).
+model CreditLedger {
+  id             String     @id @default(cuid())
+  /// Nullable so ledger rows survive user deletion (SetNull below).
+  userId         String?    @map("user_id")
+  type           LedgerType
+  /// Signed microcredits: positive adds to the balance, negative takes away.
+  amountMicro    BigInt     @map("amount_micro")
+  runId          String?    @map("run_id")
+  /// FK to tool_invocations is added with that table (M3).
+  invocationId   String?    @map("invocation_id")
+  /// Exactly-once: e.g. `charge:{invocationId}`; a retry can't charge twice.
+  idempotencyKey String     @unique @map("idempotency_key")
+  note           String?
+  createdAt      DateTime   @default(now()) @map("created_at")
+
+  user User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  // SetNull keeps the ledger row when a purged chat takes its runs with it.
+  run  AgentRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  /// /usage page: a user's ledger, newest first, cursor-paginated.
+  @@index([userId, createdAt, id])
+  @@map("credit_ledger")
+}
