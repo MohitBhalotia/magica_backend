@@ -204,7 +204,7 @@ return prisma.$transaction(async (tx) => {
 ---
 
 ## 14. Tooling [Decision]
-- **ESLint** (flat config): `eslint-config-next`, `typescript-eslint` `strictTypeChecked` + `stylisticTypeChecked`, `eslint-plugin-import-x` (order, no-cycle, no-default-export with Next.js overrides), `eslint-plugin-react-hooks`, `eslint-plugin-jsx-a11y` (frontend), `no-console`, `@typescript-eslint/no-floating-promises`, `switch-exhaustiveness-check`.
+- **ESLint** (flat config): `eslint-config-next`, `typescript-eslint` `strictTypeChecked` + `stylisticTypeChecked`, `eslint-plugin-import` as bundled by `eslint-config-next` (order, no-cycle, no-default-export with Next.js overrides; no extra `import-x` dependency, DEC-039), `eslint-plugin-react-hooks`, `eslint-plugin-jsx-a11y` (frontend), `no-console`, `@typescript-eslint/no-floating-promises`, `switch-exhaustiveness-check`.
 - **Prettier**: `printWidth: 100`, double quotes, semicolons, `trailingComma: "all"`; `prettier-plugin-tailwindcss` (frontend). ESLint never formats (`eslint-config-prettier`).
 - **Husky + lint-staged**: pre-commit runs `eslint --fix` + `prettier --write` on staged files; `pnpm typecheck && pnpm test` required before commit (agents run it explicitly).
 - **commitlint** with Conventional Commits.
