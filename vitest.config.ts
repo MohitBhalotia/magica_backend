@@ -5,6 +5,12 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },
   test: {
+    // dummy values so importing env.ts doesn't fail; real keys never load in tests
+    env: {
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_test_dummy",
+      CLERK_SECRET_KEY: "sk_test_dummy",
+      FRONTEND_ORIGINS: "http://localhost:3000",
+    },
     projects: [
       {
         test: {

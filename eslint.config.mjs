@@ -35,7 +35,7 @@ export default defineConfig([
   },
   {
     // Next.js and tool configs require default exports
-    files: ["*.config.{ts,mjs}", "src/app/**/{page,layout}.tsx"],
+    files: ["*.config.{ts,mjs}", "src/proxy.ts", "src/app/**/{page,layout}.tsx"],
     rules: { "import/no-default-export": "off" },
   },
   { files: ["**/*.mjs"], extends: [tseslint.configs.disableTypeChecked] },
