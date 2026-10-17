@@ -41,5 +41,13 @@ export default defineConfig([
   },
   { files: ["**/*.mjs"], extends: [tseslint.configs.disableTypeChecked] },
   prettier,
-  globalIgnores([".next/**", "out/**", "build/**", "coverage/**", "**/dist/**", "next-env.d.ts"]),
+  globalIgnores([
+    ".next/**",
+    "out/**",
+    "build/**",
+    "coverage/**",
+    "**/dist/**",
+    "prisma/generated/**",
+    "next-env.d.ts",
+  ]),
 ]);

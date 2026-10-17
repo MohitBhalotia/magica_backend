@@ -23,7 +23,11 @@
     "contracts:publish": "pnpm contracts:build && pnpm --filter @agent-chat/contracts publish --no-git-checks",
     "openapi": "echo \"not yet (M7)\"",
     "docs:dev": "echo \"not yet (M7)\"",
-    "prepare": "husky"
+    "prepare": "husky",
+    "postinstall": "prisma generate",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy"
   },
   "lint-staged": {
     "*.{ts,tsx,mjs}": [
@@ -35,9 +39,12 @@
   "dependencies": {
     "@agent-chat/contracts": "workspace:*",
     "@clerk/nextjs": "7.9.15",
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
     "@upstash/ratelimit": "2.2.0",
     "@upstash/redis": "1.39.0",
     "next": "16.4.2",
+    "pg": "8.23.1",
     "pino": "10.4.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
@@ -47,14 +54,17 @@
     "@commitlint/cli": "21.2.3",
     "@commitlint/config-conventional": "21.2.3",
     "@types/node": "24.19.2",
+    "@types/pg": "8.23.1",
     "@types/react": "^19.3.0",
     "@vitest/coverage-v8": "5.0.5",
+    "dotenv": "18.0.8",
     "eslint": "9.39.5",
     "eslint-config-next": "16.4.2",
     "eslint-config-prettier": "10.1.8",
     "husky": "9.1.7",
     "lint-staged": "17.6.0",
     "prettier": "3.9.10",
+    "prisma": "7.10.1",
     "typescript": "5.9.3",
     "typescript-eslint": "8.71.2",
     "vitest": "5.0.5"
