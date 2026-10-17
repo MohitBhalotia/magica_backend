@@ -14,6 +14,7 @@ export default defineConfig([
       "@next/next/no-html-link-for-pages": "off", // API-only app, no pages
       "@typescript-eslint/switch-exhaustiveness-check": "error",
       "@typescript-eslint/consistent-type-imports": "error",
+      "@typescript-eslint/consistent-type-definitions": ["error", "type"], // RULES §2
       "@typescript-eslint/restrict-template-expressions": ["error", { allowNumber: true }],
       // eslint-plugin-import ships with eslint-config-next, so no import-x dependency
       "import/no-cycle": "error",
