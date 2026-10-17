@@ -3,4 +3,5 @@ pnpm-lock.yaml
 coverage
 dist
 prisma/generated
+.trigger
 *.md

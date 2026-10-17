@@ -48,6 +48,7 @@ export default defineConfig([
     "coverage/**",
     "**/dist/**",
     "prisma/generated/**",
+    ".trigger/**",
     "next-env.d.ts",
   ]),
 ]);

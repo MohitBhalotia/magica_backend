@@ -1,7 +1,14 @@
 import { defineConfig } from "@trigger.dev/sdk";
+import { config } from "dotenv";
+
+// Load .env.local for local CLI runs; CI sets real env vars.
+config({ path: ".env.local", quiet: true });
+
+const project = process.env.TRIGGER_PROJECT_REF;
+if (!project) throw new Error("TRIGGER_PROJECT_REF is not set (see .env.example)");
 
 export default defineConfig({
-  project: "proj_enrkafhghnkkyuxikygt",
+  project,
   dirs: ["./src/trigger"],
   // Agent turns can wait minutes on tools and approvals; waits don't count toward this (checkpointed).
   maxDuration: 3600,
