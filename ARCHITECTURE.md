@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — High-Level Design
 
-The system architecture for the Agent Chat clone, designed so that **1,000 agent turns can run at the same time**,
+The system architecture for the Magica clone, designed so that **1,000 agent turns can run at the same time**,
 alongside long conversations and 100+ tools and skills, without duplicate work or charges.
 
 | | |

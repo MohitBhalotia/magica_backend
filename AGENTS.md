@@ -1,6 +1,6 @@
 # AGENTS.md — magica_backend (backend)
 
-This repo is the backend of the Agent Chat clone. It contains:
+This repo is the backend of the Magica clone. It contains:
 - REST route handlers (Next.js App Router)
 - Prisma/PostgreSQL
 - Trigger.dev tasks
