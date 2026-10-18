@@ -69,7 +69,8 @@ export type UpdateChatRequest = z.infer<typeof UpdateChatRequestSchema>;
 export const SearchQuerySchema = PageQuerySchema.extend({ q: z.string().trim().min(1).max(200) });
 export type SearchQuery = z.infer<typeof SearchQuerySchema>;
 
-/** A search hit; `snippet` is plain text with matches wrapped in <mark>…</mark>. */
+/** A search hit; `snippet` is plain text around the first match (the client highlights the query). */
 export const SearchResultSchema = ChatSummarySchema.extend({ snippet: z.string() });
+export type SearchResult = z.infer<typeof SearchResultSchema>;
 export const SearchResultListSchema = pageSchema(SearchResultSchema);
 export type SearchResultList = z.infer<typeof SearchResultListSchema>;
