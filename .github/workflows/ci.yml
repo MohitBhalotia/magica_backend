@@ -10,7 +10,8 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel a main run: it may be mid-migration or mid-deploy.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   ci:
@@ -74,3 +75,35 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: pnpm audit --prod --audit-level high
+
+  # DEC-046: migrate → Trigger.dev → Vercel, in that order, only after CI passes on main.
+  deploy:
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply migrations to production (expand/contract keeps old code working meanwhile)
+        run: pnpm db:deploy
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      - name: Deploy Trigger.dev tasks
+        run: pnpm exec trigger deploy
+        env:
+          TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
+          TRIGGER_PROJECT_REF: ${{ vars.TRIGGER_PROJECT_REF }}
+      - name: Deploy API to Vercel (env vars come from the Vercel project)
+        run: |
+          pnpm dlx vercel@64.5.0 pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+          pnpm dlx vercel@64.5.0 build --prod --token=${{ secrets.VERCEL_TOKEN }}
+          pnpm dlx vercel@64.5.0 deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
