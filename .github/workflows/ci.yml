@@ -1,0 +1,76 @@
+# TESTING.md §11 (DEC-035). Not yet here: integration tests (none exist yet), OpenAPI snapshot (M7),
+# RULES.md cross-repo hash (needs both GitHub repos, Step 9).
+# Needs: secret NEON_API_KEY, variable NEON_PROJECT_ID (the migration check runs on a Neon branch).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    env:
+      # Placeholders so env.ts validation passes during build; no step talks to these services.
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_ci
+      CLERK_SECRET_KEY: sk_test_ci
+      FRONTEND_ORIGINS: http://localhost:3000
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      UPSTASH_REDIS_URL: https://ci.upstash.io
+      UPSTASH_REDIS_TOKEN: ci
+      TRIGGER_PROJECT_REF: proj_ci
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # gitleaks scans the full history
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm test:coverage
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: coverage
+          path: coverage
+          if-no-files-found: ignore
+      - run: pnpm contracts:build
+      - run: pnpm build
+      # Migration check on a throwaway Neon branch: a copy-on-write clone of production, including
+      # _prisma_migrations, so `migrate deploy` applies exactly what the real deploy would.
+      - name: Expiry for the CI database branch
+        id: expiry
+        run: echo "at=$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+      - uses: neondatabase/create-branch-action@v6
+        id: neon
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          branch_name: ci-${{ github.run_id }}-${{ github.run_attempt }}
+          expires_at: ${{ steps.expiry.outputs.at }} # safety net if the delete step never runs
+      - name: Migrations apply cleanly and match the schema (no drift)
+        env:
+          DIRECT_URL: ${{ steps.neon.outputs.db_url }}
+        run: |
+          pnpm db:deploy
+          pnpm exec prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+      - uses: neondatabase/delete-branch-action@v3
+        if: always() && steps.neon.outputs.branch_id != ''
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          branch: ${{ steps.neon.outputs.branch_id }}
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: pnpm audit --prod --audit-level high
