@@ -50,15 +50,15 @@ No abbreviations except well-known ones (`id`, `url`, `db`, `llm`, `ui`). No `ut
 
 ## 4. Modules, imports & exports
 - **Named exports only.** Default exports only where Next.js requires them (`page`, `layout`, `route` handlers are named `GET/POST`, `default` for pages/layouts).
-- No barrel files (`index.ts` re-exporting a folder) except the published `@agent-chat/contracts` entry — barrels hurt tree-shaking and create cycles.
-- Import order (enforced by ESLint): node built-ins → external packages → `@agent-chat/contracts` → `@/` aliases → relative. Use `import type` for type-only imports.
+- No barrel files (`index.ts` re-exporting a folder) except the published `@mohitbhalotia/magica-contracts` entry — barrels hurt tree-shaking and create cycles.
+- Import order (enforced by ESLint): node built-ins → external packages → `@mohitbhalotia/magica-contracts` → `@/` aliases → relative. Use `import type` for type-only imports.
 - No circular imports (enforced). No deep relative paths beyond `../..` — use `@/`.
 - One component per file (small private sub-components in the same file are fine if < ~30 lines).
 
 ---
 
 ## 5. Validation & contracts
-- All shared shapes live in `packages/contracts` (backend repo) and are consumed via `@agent-chat/contracts`. The frontend **never** redefines them. [Brief]
+- All shared shapes live in `packages/contracts` (backend repo) and are consumed via `@mohitbhalotia/magica-contracts`. The frontend **never** redefines them. [Brief]
 - Parse at the edge with `.parse` / `safeParse`, then trust the typed value inside. Don't re-validate the same data deeper in.
 - Env vars are validated once at boot (`env.ts` with Zod); import `env`, never `process.env` elsewhere.
 - JSONB columns are written only after Zod validation and read back through the same schema.

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
-import { ErrorEnvelopeSchema } from "@agent-chat/contracts";
+import { ErrorEnvelopeSchema } from "@mohitbhalotia/magica-contracts";
 
 import { AppError } from "@/lib/errors";
 import { withHandler, withPublicHandler } from "@/lib/withHandler";

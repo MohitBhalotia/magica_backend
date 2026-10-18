@@ -20,8 +20,8 @@
     "test:int": "vitest run --project int",
     "test:coverage": "vitest run --project unit --coverage",
     "test:live": "echo \"not yet (M3)\"",
-    "contracts:build": "pnpm --filter @agent-chat/contracts build",
-    "contracts:publish": "pnpm contracts:build && pnpm --filter @agent-chat/contracts publish --no-git-checks",
+    "contracts:build": "pnpm --filter @mohitbhalotia/magica-contracts build",
+    "contracts:publish": "pnpm contracts:build && pnpm --filter @mohitbhalotia/magica-contracts publish --no-git-checks",
     "openapi": "echo \"not yet (M7)\"",
     "docs:dev": "echo \"not yet (M7)\"",
     "prepare": "husky",
@@ -38,7 +38,7 @@
     "*.{json,yaml,yml,css}": "prettier --write"
   },
   "dependencies": {
-    "@agent-chat/contracts": "workspace:*",
+    "@mohitbhalotia/magica-contracts": "workspace:*",
     "@clerk/nextjs": "7.9.15",
     "@prisma/adapter-pg": "7.10.1",
     "@prisma/client": "7.10.1",

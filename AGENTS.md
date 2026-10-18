@@ -5,7 +5,7 @@ This repo is the backend of the Agent Chat clone. It contains:
 - Prisma/PostgreSQL
 - Trigger.dev tasks
 - the tool, skill and waitpoint registries
-- the `@agent-chat/contracts` package
+- the `@mohitbhalotia/magica-contracts` package
 - Mintlify API docs
 
 The frontend lives in the separate `magica_frontend` repo.

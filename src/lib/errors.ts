@@ -1,4 +1,4 @@
-import type { ErrorCode } from "@agent-chat/contracts";
+import type { ErrorCode } from "@mohitbhalotia/magica-contracts";
 
 /** Expected failure with a user-safe message; mapped to the error envelope at the edge. */
 export class AppError extends Error {

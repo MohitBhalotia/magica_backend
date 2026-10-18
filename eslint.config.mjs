@@ -24,7 +24,7 @@ export default defineConfig([
         {
           groups: ["builtin", "external", "internal", "parent", "sibling", "index"],
           pathGroups: [
-            { pattern: "@agent-chat/contracts", group: "external", position: "after" },
+            { pattern: "@mohitbhalotia/magica-contracts", group: "external", position: "after" },
             { pattern: "@/**", group: "internal" },
           ],
           pathGroupsExcludedImportTypes: ["builtin"],

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import type { HealthResponse } from "@agent-chat/contracts";
+import type { HealthResponse } from "@mohitbhalotia/magica-contracts";
 
 import { withPublicHandler } from "@/lib/withHandler";
 

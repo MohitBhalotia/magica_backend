@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
-import { errorStatus, type ErrorEnvelope } from "@agent-chat/contracts";
+import { errorStatus, type ErrorEnvelope } from "@mohitbhalotia/magica-contracts";
 
 import { requireUserId } from "@/lib/auth";
 import { AppError } from "@/lib/errors";

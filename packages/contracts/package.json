@@ -1,7 +1,12 @@
 {
-  "name": "@agent-chat/contracts",
+  "name": "@mohitbhalotia/magica-contracts",
   "version": "0.1.0",
   "description": "Zod contracts shared by the Agent Chat backend and frontend",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MohitBhalotia/magica_backend.git",
+    "directory": "packages/contracts"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
