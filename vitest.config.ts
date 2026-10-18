@@ -28,11 +28,18 @@ export default defineConfig({
           name: "int",
           include: ["**/__tests__/**/*.int.test.ts"],
           exclude: ["**/node_modules/**"],
+          // Real Postgres on a throwaway Neon branch (see vitest.int.setup.ts).
+          globalSetup: ["./vitest.int.setup.ts"],
+          setupFiles: ["./vitest.int.env.ts"],
+          testTimeout: 30_000,
         },
       },
     ],
     coverage: {
       provider: "v8",
+      // shortcut: the default pre-run clean wipes unit coverage while the int project's slow
+      // globalSetup (Neon branch) is still starting, reporting 0%. Revisit if Vitest fixes it.
+      clean: false,
       include: ["src/**/*.ts", "packages/contracts/src/**/*.ts"],
       exclude: ["**/__tests__/**", "src/app/**"],
       // TESTING.md §6 gates

@@ -18,7 +18,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run --project unit",
     "test:int": "vitest run --project int",
-    "test:coverage": "vitest run --project unit --coverage",
+    "test:coverage": "vitest run --coverage",
     "test:live": "echo \"not yet (M3)\"",
     "contracts:build": "pnpm --filter @mohitbhalotia/magica-contracts build",
     "contracts:publish": "pnpm contracts:build && pnpm --filter @mohitbhalotia/magica-contracts publish --no-git-checks",
