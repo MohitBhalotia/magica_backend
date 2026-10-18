@@ -50,15 +50,15 @@ No abbreviations except well-known ones (`id`, `url`, `db`, `llm`, `ui`). No `ut
 
 ## 4. Modules, imports & exports
 - **Named exports only.** Default exports only where Next.js requires them (`page`, `layout`, `route` handlers are named `GET/POST`, `default` for pages/layouts).
-- No barrel files (`index.ts` re-exporting a folder) except the published `@agent-chat/contracts` entry — barrels hurt tree-shaking and create cycles.
-- Import order (enforced by ESLint): node built-ins → external packages → `@agent-chat/contracts` → `@/` aliases → relative. Use `import type` for type-only imports.
+- No barrel files (`index.ts` re-exporting a folder) except the published `@mohitbhalotia/magica-contracts` entry — barrels hurt tree-shaking and create cycles.
+- Import order (enforced by ESLint): node built-ins → external packages → `@mohitbhalotia/magica-contracts` → `@/` aliases → relative. Use `import type` for type-only imports.
 - No circular imports (enforced). No deep relative paths beyond `../..` — use `@/`.
 - One component per file (small private sub-components in the same file are fine if < ~30 lines).
 
 ---
 
 ## 5. Validation & contracts
-- All shared shapes live in `packages/contracts` (backend repo) and are consumed via `@agent-chat/contracts`. The frontend **never** redefines them. [Brief]
+- All shared shapes live in `packages/contracts` (backend repo) and are consumed via `@mohitbhalotia/magica-contracts`. The frontend **never** redefines them. [Brief]
 - Parse at the edge with `.parse` / `safeParse`, then trust the typed value inside. Don't re-validate the same data deeper in.
 - Env vars are validated once at boot (`env.ts` with Zod); import `env`, never `process.env` elsewhere.
 - JSONB columns are written only after Zod validation and read back through the same schema.
@@ -158,7 +158,7 @@ return prisma.$transaction(async (tx) => {
 - Services are plain objects of functions (`export const chatService = { … }`) importing repositories directly. No DI container or classes. Test seams come from Testcontainers and MSW, not mocks [Decision].
 
 ### 10.2 Other backend rules
-- **Prisma migrations**: never edit an applied migration; raw SQL (partial unique, GIN, tsvector) goes inside migrations; each migration folder has a `README.md` with forward/rollback/compat notes. One `PrismaClient` singleton in `lib/db.ts`.
+- **Prisma migrations**: never edit an applied migration; raw SQL (partial unique, GIN, tsvector) goes inside migrations; each `migration.sql` opens with a comment header of forward/rollback/compat notes. One `PrismaClient` singleton in `lib/db.ts`.
 - **Trigger.dev tasks** (`*.task.ts`): thin. They call services; never repositories or Prisma directly. Must be safe to retry from any point; declare `queue`, `concurrencyKey`, `maxDuration`, `retry` explicitly.
 - **Tools** (`*.tool.ts`): one file per tool via `defineTool({...})`; pure with respect to chat state (return data, never write messages or runs; read through services or providers, never repositories). Input/output Zod schemas, `estimateCredits`, optional `requiresApproval`, `sanitize`.
 - **Skills**: `agent-skills/<kebab-name>/SKILL.md` with YAML `name` + `description`; bodies are guidance only.
@@ -204,7 +204,7 @@ return prisma.$transaction(async (tx) => {
 ---
 
 ## 14. Tooling [Decision]
-- **ESLint** (flat config): `eslint-config-next`, `typescript-eslint` `strictTypeChecked` + `stylisticTypeChecked`, `eslint-plugin-import-x` (order, no-cycle, no-default-export with Next.js overrides), `eslint-plugin-react-hooks`, `eslint-plugin-jsx-a11y` (frontend), `no-console`, `@typescript-eslint/no-floating-promises`, `switch-exhaustiveness-check`.
+- **ESLint** (flat config): `eslint-config-next`, `typescript-eslint` `strictTypeChecked` + `stylisticTypeChecked`, `eslint-plugin-import` as bundled by `eslint-config-next` (order, no-cycle, no-default-export with Next.js overrides; no extra `import-x` dependency, DEC-039), `eslint-plugin-react-hooks`, `eslint-plugin-jsx-a11y` (frontend), `no-console`, `@typescript-eslint/no-floating-promises`, `switch-exhaustiveness-check`.
 - **Prettier**: `printWidth: 100`, double quotes, semicolons, `trailingComma: "all"`; `prettier-plugin-tailwindcss` (frontend). ESLint never formats (`eslint-config-prettier`).
 - **Husky + lint-staged**: pre-commit runs `eslint --fix` + `prettier --write` on staged files; `pnpm typecheck && pnpm test` required before commit (agents run it explicitly).
 - **commitlint** with Conventional Commits.

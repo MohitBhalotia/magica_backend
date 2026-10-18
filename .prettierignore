@@ -1,0 +1,7 @@
+pnpm-lock.yaml
+.next
+coverage
+dist
+prisma/generated
+.trigger
+*.md

@@ -1,0 +1,33 @@
+{
+  "name": "@mohitbhalotia/magica-contracts",
+  "version": "0.1.0",
+  "description": "Zod contracts shared by the Agent Chat backend and frontend",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MohitBhalotia/magica_backend.git",
+    "directory": "packages/contracts"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "zod": "^4.6.0"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  }
+}

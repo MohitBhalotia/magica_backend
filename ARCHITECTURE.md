@@ -89,7 +89,7 @@ flowchart LR
 | **Trigger.dev Realtime** | Managed | Transport for run metadata (bounded) and text/reasoning streams (durable for 28 days, resumable) | Be the source of truth for settled turns |
 | **Upstash Redis** | Managed | Ephemeral rate-limit counters (user sends and uploads, API keys, OpenRouter and Magica buckets) | Hold durable state, locks, idempotency or credits |
 | **R2** | Cloudflare | Uploaded and generated media (permanent URLs) | — |
-| **Contracts** (`@agent-chat/contracts`) | npm package | Every Zod schema across API, realtime, tools, webhooks and errors | — |
+| **Contracts** (`@mohitbhalotia/magica-contracts`) | npm package | Every Zod schema across API, realtime, tools, webhooks and errors | — |
 
 **Inside the backend (layering)**
 Feature modules with one file per responsibility (`src/modules/<feature>/`). Full rules are in RULES.md §10.1.
