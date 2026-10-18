@@ -1,6 +1,6 @@
 import { pino, type LoggerOptions } from "pino";
 
-import { env } from "@/lib/env";
+import { coreEnv as env } from "@/lib/coreEnv";
 
 const SECRET_KEYS = ["authorization", "cookie", "apiKey", "token", "secret", "password"];
 
