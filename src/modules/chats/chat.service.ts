@@ -6,6 +6,8 @@ import { chatRepository } from "@/modules/chats/chat.repository";
 import { userService } from "@/modules/users/user.service";
 
 const MESSAGES_PER_PAGE = 50;
+/** Auto-titles from the first prompt stay short; renames may use the full MAX_TITLE_LENGTH. */
+export const PROMPT_TITLE_LENGTH = 50;
 const notFound = () => new AppError("NOT_FOUND", "Chat not found.");
 
 async function owned(chatId: string, userId: string) {
@@ -15,8 +17,8 @@ async function owned(chatId: string, userId: string) {
   return chat;
 }
 
-const truncateTitle = (text: string) =>
-  text.length > MAX_TITLE_LENGTH ? `${text.slice(0, MAX_TITLE_LENGTH - 1).trimEnd()}…` : text;
+const truncateTitle = (text: string, max: number) =>
+  text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
 
 export const chatService = {
   list: (userId: string, limit: number, cursor?: string) =>
@@ -30,7 +32,12 @@ export const chatService = {
   async create(userId: string, clientMessageId: string, text: string) {
     const { chat, message } = await db.$transaction(async (tx) => {
       await userService.ensure(userId, tx);
-      const data = { id: clientMessageId, userId, title: truncateTitle(text), text };
+      const data = {
+        id: clientMessageId,
+        userId,
+        title: truncateTitle(text, PROMPT_TITLE_LENGTH),
+        text,
+      };
       return chatRepository.createWithMessage(data, tx);
     });
     // Only on a client-id collision with another user's chat; same 404 as any foreign chat.
@@ -49,7 +56,8 @@ export const chatService = {
 
   async duplicate(chatId: string, userId: string) {
     const chat = await owned(chatId, userId);
-    const title = truncateTitle(`${chat.title} (copy)`);
+    // Same suffix as the reference ("Greeting - Copy", observed 2026-10-18).
+    const title = truncateTitle(`${chat.title} - Copy`, MAX_TITLE_LENGTH);
     return db.$transaction((tx) => chatRepository.duplicate({ ...chat, title }, tx));
   },
 
