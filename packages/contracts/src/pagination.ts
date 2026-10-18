@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const MAX_PAGE_LIMIT = 50;
 
-/** Query for cursor pagination over `(createdAt, id)`; the cursor is opaque to clients. */
+/** Keyset pagination query; the cursor is opaque to clients (the server encodes its sort key). */
 export const PageQuerySchema = z.object({
   cursor: z.string().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(MAX_PAGE_LIMIT).default(20),
