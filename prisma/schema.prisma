@@ -34,18 +34,16 @@ enum TitleSource {
 }
 
 model Chat {
-  id          String                   @id @default(cuid())
-  userId      String                   @map("user_id")
-  title       String                   @default("New chat")
-  titleSource TitleSource              @default(placeholder) @map("title_source")
-  isPinned    Boolean                  @default(false) @map("is_pinned")
-  pinnedAt    DateTime?                @map("pinned_at")
+  id          String      @id @default(cuid())
+  userId      String      @map("user_id")
+  title       String      @default("New chat")
+  titleSource TitleSource @default(placeholder) @map("title_source")
+  isPinned    Boolean     @default(false) @map("is_pinned")
+  pinnedAt    DateTime?   @map("pinned_at")
   /// Soft delete; a cron hard-purges later (PRD §6.1).
-  deletedAt   DateTime?                @map("deleted_at")
-  createdAt   DateTime                 @default(now()) @map("created_at")
-  updatedAt   DateTime                 @updatedAt @map("updated_at")
-  /// Generated column (written in the migration SQL): to_tsvector('simple', title).
-  titleTsv    Unsupported("tsvector")? @default(dbgenerated("to_tsvector('simple'::regconfig, title)")) @map("title_tsv")
+  deletedAt   DateTime?   @map("deleted_at")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
 
   user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages Message[]
@@ -56,8 +54,7 @@ model Chat {
   /// Sidebar list: pinned first, then most recent, with a stable cursor.
   @@index([userId, isPinned, updatedAt, id])
   @@index([userId, createdAt, id])
-  /// Full-text title search and fuzzy/prefix title search (pg_trgm).
-  @@index([titleTsv], type: Gin)
+  /// Fast case-insensitive substring search on titles (ILIKE '%q%') via pg_trgm.
   @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "chats_title_trgm_idx")
   @@map("chats")
 }
@@ -96,28 +93,26 @@ enum MessageStatus {
 }
 
 model Message {
-  id              String                   @id @default(cuid())
-  chatId          String                   @map("chat_id")
-  userId          String                   @map("user_id")
+  id              String        @id @default(cuid())
+  chatId          String        @map("chat_id")
+  userId          String        @map("user_id")
   role            MessageRole
-  status          MessageStatus            @default(pending)
+  status          MessageStatus @default(pending)
   /// Ordered content blocks, validated by the contracts union before every write.
-  contentBlocks   Json                     @default("[]") @map("content_blocks")
+  contentBlocks   Json          @default("[]") @map("content_blocks")
   /// Plain text denormalised from contentBlocks, for search and previews.
-  text            String                   @default("")
+  text            String        @default("")
   /// Client-generated id: a retried POST returns the same message instead of a duplicate.
-  clientMessageId String?                  @map("client_message_id")
+  clientMessageId String?       @map("client_message_id")
   /// The run that produced (assistant) or consumed (user) this message.
-  runId           String?                  @map("run_id")
-  creditUsedMicro BigInt                   @default(0) @map("credit_used_micro")
-  tokenUsage      Json?                    @map("token_usage")
-  routedModel     String?                  @map("routed_model")
-  errorCode       String?                  @map("error_code")
-  errorMessage    String?                  @map("error_message")
-  createdAt       DateTime                 @default(now()) @map("created_at")
-  completedAt     DateTime?                @map("completed_at")
-  /// Generated column (written in the migration SQL): to_tsvector('simple', text).
-  textTsv         Unsupported("tsvector")? @default(dbgenerated("to_tsvector('simple'::regconfig, text)")) @map("text_tsv")
+  runId           String?       @map("run_id")
+  creditUsedMicro BigInt        @default(0) @map("credit_used_micro")
+  tokenUsage      Json?         @map("token_usage")
+  routedModel     String?       @map("routed_model")
+  errorCode       String?       @map("error_code")
+  errorMessage    String?       @map("error_message")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  completedAt     DateTime?     @map("completed_at")
 
   /// Ownership FK: the message's user must own the chat.
   chat          Chat       @relation(fields: [chatId, userId], references: [id, userId], onDelete: Cascade)
@@ -128,7 +123,6 @@ model Message {
   @@unique([chatId, clientMessageId])
   /// History: newest first, `before` cursor for older pages.
   @@index([chatId, createdAt, id])
-  @@index([textTsv], type: Gin)
   @@map("messages")
 }
 

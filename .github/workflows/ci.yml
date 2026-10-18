@@ -38,7 +38,12 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm format:check
+      # Unit + integration tests. The int project creates a throwaway Neon branch (a copy of
+      # production incl. _prisma_migrations), runs `migrate deploy` + a drift check, tests, deletes it.
       - run: pnpm test:coverage
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -47,30 +52,6 @@ jobs:
           if-no-files-found: ignore
       - run: pnpm contracts:build
       - run: pnpm build
-      # Migration check on a throwaway Neon branch: a copy-on-write clone of production, including
-      # _prisma_migrations, so `migrate deploy` applies exactly what the real deploy would.
-      - name: Expiry for the CI database branch
-        id: expiry
-        run: echo "at=$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-      - uses: neondatabase/create-branch-action@v6
-        id: neon
-        with:
-          project_id: ${{ vars.NEON_PROJECT_ID }}
-          api_key: ${{ secrets.NEON_API_KEY }}
-          branch_name: ci-${{ github.run_id }}-${{ github.run_attempt }}
-          expires_at: ${{ steps.expiry.outputs.at }} # safety net if the delete step never runs
-      - name: Migrations apply cleanly and match the schema (no drift)
-        env:
-          DIRECT_URL: ${{ steps.neon.outputs.db_url }}
-        run: |
-          pnpm db:deploy
-          pnpm exec prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
-      - uses: neondatabase/delete-branch-action@v3
-        if: always() && steps.neon.outputs.branch_id != ''
-        with:
-          project_id: ${{ vars.NEON_PROJECT_ID }}
-          api_key: ${{ secrets.NEON_API_KEY }}
-          branch: ${{ steps.neon.outputs.branch_id }}
       - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

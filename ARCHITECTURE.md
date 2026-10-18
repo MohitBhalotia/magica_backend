@@ -290,7 +290,7 @@ This works out to **≈ 0.2 DB writes/s per active run**, versus ~20–50/s if w
 ### 6.4 Indexing for scale-ready reads (R7)
 - Chats list: `(userId, isPinned DESC, updatedAt DESC, id DESC)`, with a keyset cursor over the same tuple.
 - Messages: `(chatId, createdAt DESC, id DESC)`. Newest first, with a `before` cursor.
-- Search: generated `tsvector` columns with GIN indexes on `Chat.title` and `Message.text`, plus `pg_trgm` on titles.
+- Search: case-insensitive substring match (`ILIKE`) on `Chat.title` (served by the `pg_trgm` GIN index) and `Message.text`, scoped to the user's non-deleted chats (DEC-049).
 - Sweeper: `AgentRun(status, updatedAt)`. Ledger: `(userId, createdAt, id)`.
 - Every list has `limit ≤ 50`. No `OFFSET`, no `COUNT(*)` on hot paths.
 
