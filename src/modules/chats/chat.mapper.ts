@@ -1,12 +1,15 @@
 import type { z } from "zod";
 
-import type {
-  ChatSummary,
-  Message,
-  MessageRoleSchema,
-  MessageStatusSchema,
-  SearchResult,
-  TitleSourceSchema,
+import {
+  ContentBlocksSchema,
+  ErrorCodeSchema,
+  type ChatSummary,
+  type Message,
+  type MessageRoleSchema,
+  type MessageStatusSchema,
+  type RunStatusSchema,
+  type SearchResult,
+  type TitleSourceSchema,
 } from "@mohitbhalotia/magica-contracts";
 
 import type * as Db from "../../../prisma/generated/client";
@@ -17,7 +20,8 @@ export const enumParity: [
   Same<Db.TitleSource, z.infer<typeof TitleSourceSchema>>,
   Same<Db.MessageRole, z.infer<typeof MessageRoleSchema>>,
   Same<Db.MessageStatus, z.infer<typeof MessageStatusSchema>>,
-] = [true, true, true];
+  Same<Db.RunStatus, z.infer<typeof RunStatusSchema>>,
+] = [true, true, true, true];
 
 export const toChatSummary = (c: Db.Chat): ChatSummary => ({
   id: c.id,
@@ -28,12 +32,17 @@ export const toChatSummary = (c: Db.Chat): ChatSummary => ({
   updatedAt: c.updatedAt.toISOString(),
 });
 
+// JSONB and the error-code column are untyped in Prisma: parse them back into the contract shapes.
 export const toMessage = (m: Db.Message): Message => ({
   id: m.id,
   role: m.role,
   status: m.status,
   text: m.text,
+  contentBlocks: ContentBlocksSchema.parse(m.contentBlocks),
+  errorCode: m.errorCode === null ? null : ErrorCodeSchema.parse(m.errorCode),
+  errorMessage: m.errorMessage,
   createdAt: m.createdAt.toISOString(),
+  completedAt: m.completedAt?.toISOString() ?? null,
 });
 
 const SNIPPET_RADIUS = 60;

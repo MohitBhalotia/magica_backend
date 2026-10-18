@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 
 import {
-  CreateChatRequestSchema,
   PageQuerySchema,
+  SendMessageRequestSchema,
   SearchQuerySchema,
   UpdateChatRequestSchema,
   type ChatDetail,
@@ -28,7 +28,7 @@ export const listChats = withHandler(async (req, { userId }) => {
 
 export const createChat = withHandler(async (req, { userId }) => {
   await enforceRateLimit("send", userId);
-  const { clientMessageId, text } = CreateChatRequestSchema.parse(await req.json());
+  const { clientMessageId, text } = SendMessageRequestSchema.parse(await req.json());
   const created = await chatService.create(userId, clientMessageId, text);
   return NextResponse.json<CreateChatResponse>(created, { status: 201 });
 });
@@ -46,6 +46,8 @@ export const getChat = withHandler<ChatParams>(async (req, { userId, params }) =
   return NextResponse.json<ChatDetail>({
     ...toChatSummary(chat),
     messages: { ...messages, items: messages.items.map(toMessage) },
+    // The run in progress, with a fresh token, arrives with the runs module (M2 B4).
+    activeRun: null,
   });
 });
 

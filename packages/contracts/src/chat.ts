@@ -1,6 +1,9 @@
 import { z } from "zod";
 
+import { ContentBlocksSchema } from "./blocks.ts";
+import { ErrorCodeSchema } from "./errors.ts";
 import { pageSchema, PageQuerySchema } from "./pagination.ts";
+import { RunHandleSchema } from "./run.ts";
 
 export const MAX_TITLE_LENGTH = 200;
 export const MAX_MESSAGE_LENGTH = 10_000;
@@ -33,29 +36,55 @@ export type ChatSummary = z.infer<typeof ChatSummarySchema>;
 export const ChatListSchema = pageSchema(ChatSummarySchema);
 export type ChatList = z.infer<typeof ChatListSchema>;
 
-/** M1 subset; content blocks (text, thinking, tool use…) join in M2. */
+/**
+ * A message. `contentBlocks` is the ordered content (assistant turns); `text` is the plain-text
+ * projection for search, copy and the user bubble. Failed/cancelled turns keep their partial blocks.
+ */
 export const MessageSchema = z.object({
   id: z.string(),
   role: MessageRoleSchema,
   status: MessageStatusSchema,
   text: z.string(),
+  contentBlocks: ContentBlocksSchema,
+  errorCode: ErrorCodeSchema.nullable(),
+  errorMessage: z.string().nullable(),
   createdAt: z.iso.datetime(),
+  completedAt: z.iso.datetime().nullable(),
 });
 export type Message = z.infer<typeof MessageSchema>;
 
-/** `GET /chats/:id`: the chat plus its newest messages; `messages.nextCursor` loads older ones. */
-export const ChatDetailSchema = ChatSummarySchema.extend({ messages: pageSchema(MessageSchema) });
+/**
+ * `GET /chats/:id`: the chat, its newest messages (`messages.nextCursor` loads older ones) and the
+ * run in progress, if any, with a fresh token so a reload can resume the live stream.
+ */
+export const ChatDetailSchema = ChatSummarySchema.extend({
+  messages: pageSchema(MessageSchema),
+  activeRun: RunHandleSchema.nullable(),
+});
 export type ChatDetail = z.infer<typeof ChatDetailSchema>;
 
-/** `POST /chats`. Resending the same clientMessageId returns the same chat (no duplicates). */
-export const CreateChatRequestSchema = z.object({
+/**
+ * `POST /chats` (first message) and `POST /chats/:id/messages` (follow-up). Resending the same
+ * clientMessageId returns the same chat, messages and run: no duplicates.
+ */
+export const SendMessageRequestSchema = z.object({
   clientMessageId: z.uuid(),
   text: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH),
 });
-export type CreateChatRequest = z.infer<typeof CreateChatRequestSchema>;
+export type SendMessageRequest = z.infer<typeof SendMessageRequestSchema>;
 
+// M1 response of `POST /chats`; removed once that endpoint returns SendResponse (M2 B4).
 export const CreateChatResponseSchema = z.object({ chatId: z.string(), userMessageId: z.string() });
 export type CreateChatResponse = z.infer<typeof CreateChatResponseSchema>;
+
+/** Both sends: the new messages plus the run that answers them. */
+export const SendResponseSchema = z.object({
+  chatId: z.string(),
+  userMessageId: z.string(),
+  assistantMessageId: z.string(),
+  run: RunHandleSchema,
+});
+export type SendResponse = z.infer<typeof SendResponseSchema>;
 
 /** `PATCH /chats/:id`: rename and/or pin. */
 export const UpdateChatRequestSchema = z
