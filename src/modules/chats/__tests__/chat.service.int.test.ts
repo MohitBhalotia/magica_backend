@@ -2,10 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { MAX_TITLE_LENGTH } from "@mohitbhalotia/magica-contracts";
-
 import type { AppError } from "@/lib/errors";
-import { chatService } from "@/modules/chats/chat.service";
+import { chatService, PROMPT_TITLE_LENGTH } from "@/modules/chats/chat.service";
 
 // Each test uses fresh user ids, so tests are independent of each other and of copied data.
 const newUser = () => `user_test_${randomUUID()}`;
@@ -19,7 +17,7 @@ describe("create", () => {
     const { chatId } = await send(user, `${"x".repeat(80)} tail`);
     const { chat, messages } = await chatService.get(chatId, user);
     expect(chat).toMatchObject({ titleSource: "prompt" });
-    expect(chat.title.length).toBeLessThanOrEqual(MAX_TITLE_LENGTH);
+    expect(chat.title.length).toBeLessThanOrEqual(PROMPT_TITLE_LENGTH);
     expect(messages.items).toHaveLength(1);
     expect(messages.items[0]).toMatchObject({ role: "user", status: "success" });
   });
@@ -83,7 +81,7 @@ describe("remove and duplicate", () => {
     const user = newUser();
     const { chatId } = await send(user, "first prompt");
     const copy = await chatService.duplicate(chatId, user);
-    expect(copy.title).toBe("first prompt (copy)");
+    expect(copy.title).toBe("first prompt - Copy");
     const { messages } = await chatService.get(copy.id, user);
     expect(messages.items.map((m) => m.text)).toEqual(["first prompt"]);
   });

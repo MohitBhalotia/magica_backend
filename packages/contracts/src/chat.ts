@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { pageSchema, PageQuerySchema } from "./pagination.ts";
 
-export const MAX_TITLE_LENGTH = 50;
+export const MAX_TITLE_LENGTH = 200;
 export const MAX_MESSAGE_LENGTH = 10_000;
 
 // API enums. They mirror the Prisma enums; a backend type check fails CI on any drift (DEC-048).
