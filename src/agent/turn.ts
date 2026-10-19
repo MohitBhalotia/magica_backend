@@ -129,7 +129,11 @@ export function toStored(message?: AgentMessage) {
   });
   return {
     blocks,
-    text: blocks.map((b) => (b.type === "text" ? b.text : "")).join(""),
+    // Models often open with blank lines; the plain text feeds previews, search and copy.
+    text: blocks
+      .map((b) => (b.type === "text" ? b.text : ""))
+      .join("")
+      .trim(),
     metadata: MessageMetadataSchema.parse(message?.metadata ?? {}),
   };
 }

@@ -61,7 +61,7 @@ const busy = () => {
 
 describe("streamTurn", () => {
   it("streams reasoning and text as UI chunks and ends with the saved message", async () => {
-    const { end, chunks } = await turn(() => answer("Hello", ", world"));
+    const { end, chunks } = await turn(() => answer("\n\nHello", ", world"));
 
     expect(chunks.map((c) => c.type)).toContain("reasoning-delta");
     expect(end).toMatchObject({ status: "completed", usage: { totalTokens: 8 } });
