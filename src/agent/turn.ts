@@ -1,6 +1,7 @@
 import {
   APICallError,
   createUIMessageStream,
+  InvalidToolInputError,
   RetryError,
   stepCountIs,
   StreamProviderError,
@@ -168,6 +169,16 @@ export function toStored(message?: AgentMessage) {
  */
 export function toTurnError(err: unknown): AppError {
   if (err instanceof AppError) return err;
+  // The model gets the SDK's detailed message; the step row gets a plain one.
+  if (InvalidToolInputError.isInstance(err))
+    return new AppError(
+      "INVALID_TOOL_INPUT",
+      "The tool input wasn't valid, so it didn't run.",
+      undefined,
+      {
+        cause: err,
+      },
+    );
   const last = RetryError.isInstance(err) ? err.lastError : err;
   if (!APICallError.isInstance(last) && !StreamProviderError.isInstance(last))
     return new AppError("INTERNAL", "Something went wrong. Please try again.", undefined, {
