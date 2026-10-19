@@ -95,4 +95,47 @@ describe("openRouterFree", () => {
     expect(error?.type === "error" && APICallError.isInstance(error.error)).toBe(true);
     expect(error?.type === "error" && toTurnError(error.error).code).toBe("MODEL_UNAVAILABLE");
   });
+
+  // Regression: an unhandled rejection here crashes the Trigger.dev worker and the run never ends.
+  it("Stop mid-answer with tools ends cleanly, with no unhandled rejection (patched provider)", async () => {
+    let n = 0;
+    server.use(
+      http.post(ENDPOINT, () => {
+        const timer = { id: undefined as NodeJS.Timeout | undefined };
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            timer.id = setInterval(() => {
+              const frame = {
+                id: "g1",
+                model: "m",
+                choices: [{ delta: { content: `w${String(n++)} ` } }],
+              };
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`));
+            }, 5);
+          },
+          cancel: () => {
+            clearInterval(timer.id);
+          },
+        });
+        return new HttpResponse(body, { headers: { "Content-Type": "text/event-stream" } });
+      }),
+    );
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+
+    const stop = new AbortController();
+    const result = streamText({
+      model: openRouterFree({ apiKey: "sk-or-test" }),
+      prompt: "hi",
+      tools: {},
+      abortSignal: stop.signal,
+    });
+    for await (const part of result.stream)
+      if (part.type === "text-delta") stop.abort("run cancelled");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    process.off("unhandledRejection", onUnhandled);
+
+    expect(unhandled).toEqual([]);
+  });
 });
