@@ -5,7 +5,11 @@ import { generateTitle } from "@/agent/title";
 import { chatRepository } from "@/modules/chats/chat.repository";
 import { openRouterFree } from "@/providers/openrouter";
 
-/** After a chat's first answer: replaces the truncated-prompt title with a short AI title. */
+/**
+ * Started with a chat's first message, alongside the reply: replaces the truncated-prompt title
+ * with a short AI title. Usually only the prompt is settled then (the reply is still streaming);
+ * 2 messages, newest first, still include the prompt if this run starts after the reply.
+ */
 export const chatTitle = schemaTask({
   id: "chat-title",
   schema: z.object({ chatId: z.string() }),

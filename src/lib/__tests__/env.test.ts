@@ -14,6 +14,8 @@ const api = {
   TRIGGER_SECRET_KEY: "tr_test_x",
 };
 const worker = { ...db, OPENROUTER_API_KEY: "sk-or-x" };
+// Built explicitly: a literal U+FEFF in source is invisible.
+const BOM = String.fromCharCode(0xfeff);
 
 describe("EnvSchema (API)", () => {
   it("requires Clerk keys", () => {
@@ -44,5 +46,13 @@ describe("WorkerEnvSchema", () => {
 
   it("requires the OpenRouter key", () => {
     expect(WorkerEnvSchema.safeParse(db).success).toBe(false);
+  });
+
+  it("strips a BOM and whitespace from the key, which would break the Authorization header", () => {
+    const key = WorkerEnvSchema.parse({
+      ...worker,
+      OPENROUTER_API_KEY: `${BOM}sk-or-v1-abc\r\n`,
+    }).OPENROUTER_API_KEY;
+    expect(key).toBe("sk-or-v1-abc");
   });
 });

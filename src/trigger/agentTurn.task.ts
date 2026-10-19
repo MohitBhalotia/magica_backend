@@ -10,9 +10,6 @@ import { chatRepository } from "@/modules/chats/chat.repository";
 import { runRepository } from "@/modules/runs/run.repository";
 import { runService } from "@/modules/runs/run.service";
 import { openRouterFree } from "@/providers/openrouter";
-import { chatTitle } from "@/trigger/chatTitle.task";
-
-import { TitleSource } from "../../prisma/generated/client";
 
 /** Messages the model sees; a rolling summary of older ones comes later (M3+). */
 const HISTORY_LIMIT = 20;
@@ -67,10 +64,6 @@ export const agentTurn = schemaTask({
     });
     // A failed turn fails the Trigger.dev run too, with the same user-safe message.
     if (error) throw new AppError(error.code, error.message);
-    if (end.status === "completed" && run.chat.titleSource === TitleSource.prompt)
-      await chatTitle.trigger({ chatId: run.chatId }).catch((err: unknown) => {
-        logger.warn("chat-title trigger failed; the prompt title stays", { err, runId });
-      });
     return { status: end.status };
   },
 });

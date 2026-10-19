@@ -114,10 +114,7 @@ export const runRepository = {
       where: { id, status: RunStatus.queued },
       data: { status: RunStatus.thinking, startedAt: new Date() },
     });
-    const run = await db.agentRun.findUnique({
-      where: { id },
-      include: { chat: { select: { titleSource: true } } },
-    });
+    const run = await db.agentRun.findUnique({ where: { id } });
     return run && isActive(run.status) ? run : null;
   },
 
