@@ -22,7 +22,7 @@ If this repo sits inside the planning workspace, also read `../AGENTS.md` and `.
 | Dev API | `pnpm dev` |
 | Trigger.dev dev worker | `pnpm trigger:dev` |
 | Typecheck / lint / test | `pnpm typecheck` · `pnpm lint` · `pnpm test` |
-| Integration tests (Docker needed) | `pnpm test:int` |
+| Integration tests (a throwaway Neon branch; needs `NEON_API_KEY`, `NEON_PROJECT_ID`) | `pnpm test:int` |
 | Live provider tests (spends credits — ask first) | `pnpm test:live` |
 | Prisma migrate (dev) / generate | `pnpm db:migrate` · `pnpm db:generate` |
 | Build + publish contracts | `pnpm contracts:build` · `pnpm contracts:publish` |
