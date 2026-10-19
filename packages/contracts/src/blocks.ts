@@ -40,5 +40,7 @@ export const ContentBlocksSchema = z.array(ContentBlockSchema);
 /** `UIMessage.metadata` of an assistant message: streamed live, then saved with the message. */
 export const MessageMetadataSchema = z.object({
   thinkingMs: z.int().nonnegative().optional(),
+  /** How long each finished tool call took, by `toolCallId` (the step row's duration). */
+  toolMs: z.record(z.string(), z.int().nonnegative()).optional(),
 });
 export type MessageMetadata = z.infer<typeof MessageMetadataSchema>;

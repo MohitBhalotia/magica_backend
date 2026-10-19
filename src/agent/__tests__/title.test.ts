@@ -35,6 +35,15 @@ describe("generateTitle", () => {
     expect(title?.endsWith("…")).toBe(true);
   });
 
+  it("drops a refusal or apology instead of using it as the title", async () => {
+    const said = [
+      "I cannot generate or create images as I am a text-based model.",
+      "I'm sorry, but I can't help with that",
+      "Sorry, I am unable to do this",
+    ];
+    for (const text of said) expect(await generateTitle(modelSaying(text), chat)).toBeNull();
+  });
+
   it("returns null when the model says nothing", async () => {
     expect(await generateTitle(modelSaying("  "), chat)).toBeNull();
   });
