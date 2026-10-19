@@ -36,6 +36,22 @@ const ModelSchemaResponseSchema = z.looseObject({
 });
 type ModelSchemaResponse = z.infer<typeof ModelSchemaResponseSchema>;
 
+/** `POST /nodes/{nodeType}/run` (202). Its webhook signing secret isn't kept: see `getRun`. */
+const RunCreatedSchema = z.object({ runId: z.string() });
+
+/** `GET /nodes/runs/{id}`: a run's status and, once COMPLETED, the model's output. */
+const RunSchema = z.looseObject({
+  id: z.string(),
+  status: z.enum(["QUEUED", "RUNNING", "COMPLETED", "FAILED", "CANCELED"]),
+  /** Absent until the run completes. */
+  output: z.unknown().optional(),
+  /** Magica's user-safe reason for a failed run. */
+  userMessage: z.string().nullish(),
+  /** Microcredits. */
+  creditUsed: z.number().optional(),
+});
+export type MagicaRun = z.infer<typeof RunSchema>;
+
 /** Magica's error body: `{ error, message, code, traceId }`, any of which may be missing. */
 const ErrorBodySchema = z
   .object({ message: z.string().optional(), traceId: z.string().optional() })
@@ -88,13 +104,13 @@ async function errorFromResponse(response: Response): Promise<AppError> {
 const REQUEST_TIMEOUT_MS = 15_000;
 
 /**
- * One authenticated request, with the response checked against `schema`. `signal` is the turn's
- * abort signal: Stop cancels the request, and so does the timeout.
+ * One authenticated request (a POST when there's a `body`), with the response checked against
+ * `schema`. `signal` is the turn's abort signal: Stop cancels the request, and so does the timeout.
  */
 async function request<S extends z.ZodType>(
   path: string,
   schema: S,
-  signal?: AbortSignal,
+  { signal, body }: { signal?: AbortSignal; body?: unknown } = {},
 ): Promise<z.infer<S>> {
   const { MAGICA_API_KEY, MAGICA_BASE_URL } = workerEnv();
   const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
@@ -102,7 +118,12 @@ async function request<S extends z.ZodType>(
   let response: Response;
   try {
     response = await fetch(`${MAGICA_BASE_URL}${path}`, {
-      headers: { Authorization: `Bearer ${MAGICA_API_KEY}` },
+      method: body === undefined ? "GET" : "POST",
+      headers: {
+        Authorization: `Bearer ${MAGICA_API_KEY}`,
+        ...(body !== undefined && { "Content-Type": "application/json" }),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
   } catch (err) {
@@ -121,7 +142,7 @@ const schemaCache = new Map<string, ModelSchemaResponse>();
 export const magica = {
   /** Magica's own model search, by what the user wants to do. */
   searchModels: (query: string, signal?: AbortSignal) =>
-    request(`/models/search?query=${encodeURIComponent(query)}`, SearchResponseSchema, signal),
+    request(`/models/search?query=${encodeURIComponent(query)}`, SearchResponseSchema, { signal }),
 
   /** A model's live input fields and defaults. */
   async modelSchema(modelId: string, signal?: AbortSignal): Promise<ModelSchemaResponse> {
@@ -129,8 +150,29 @@ export const magica = {
     if (cached) return cached;
 
     const path = `/models/${encodeURIComponent(modelId)}/schema`;
-    const schema = await request(path, ModelSchemaResponseSchema, signal);
+    const schema = await request(path, ModelSchemaResponseSchema, { signal });
     schemaCache.set(modelId, schema);
     return schema;
   },
+
+  /**
+   * Starts a model run. Magica has no idempotency key, so callers must save the returned id
+   * before anything else can fail. `webhookUrl` is called when the run ends.
+   */
+  createRun: (job: MagicaJob, webhookUrl: string, signal?: AbortSignal) =>
+    request(`/nodes/${encodeURIComponent(job.nodeType)}/run`, RunCreatedSchema, {
+      signal,
+      body: {
+        input: job.input,
+        subModelId: job.subModelId,
+        webhook: { url: webhookUrl, events: ["run.completed", "run.failed", "run.canceled"] },
+      },
+    }),
+
+  /** A run's current status and output, read with our key: the only result we trust. */
+  getRun: (runId: string, signal?: AbortSignal) =>
+    request(`/nodes/runs/${encodeURIComponent(runId)}`, RunSchema, { signal }),
 };
+
+/** One model run: the node type, an optional mode (sub-model) and the model's input fields. */
+export type MagicaJob = { nodeType: string; subModelId?: string; input: Record<string, unknown> };

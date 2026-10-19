@@ -26,6 +26,20 @@ export const toolRepository = {
       update: {},
     }),
 
+  get: (id: string, db: DbClient = prisma) =>
+    db.toolInvocation.findUniqueOrThrow({ where: { id } }),
+
+  /** Saved straight after the Magica run is created, so a retry never starts a second one. */
+  setMagicaRunId: (id: string, magicaRunId: string, db: DbClient = prisma) =>
+    db.toolInvocation.update({ where: { id }, data: { magicaRunId } }),
+
+  /** Stop: the call is cancelled, and anything Magica sends later is ignored. */
+  cancel: (row: { id: string; startedAt: Date }, db: DbClient = prisma) =>
+    db.toolInvocation.update({
+      where: { id: row.id },
+      data: { state: ToolState.cancelled, ...finished(row.startedAt) },
+    }),
+
   succeed: (
     row: { id: string; startedAt: Date },
     output: Prisma.InputJsonValue,

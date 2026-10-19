@@ -71,7 +71,8 @@ export function buildTools(tools: readonly RegisteredTool[], ctx: TurnContext): 
  * 1. record it (a ToolInvocation row, unique per run and call id);
  * 2. if this exact call already succeeded (a retried step), return the saved result;
  * 3. otherwise run the tool and check its output against the tool's schema;
- * 4. save the result, or save the error and rethrow it for the model to read.
+ * 4. save the result, or save the error and rethrow it for the model to read (on Stop, the call
+ *    is marked cancelled instead).
  */
 async function runToolCall<I, O>(
   def: ToolDefinition<I, O>,
@@ -97,6 +98,10 @@ async function runToolCall<I, O>(
     await toolRepository.succeed(call, output as Prisma.InputJsonValue);
     return output;
   } catch (err) {
+    if (turn.signal?.aborted) {
+      await toolRepository.cancel(call);
+      throw err;
+    }
     // Our own errors carry a safe message; anything unexpected gets a generic one.
     const error =
       err instanceof AppError
