@@ -28,7 +28,8 @@ jobs:
       TRIGGER_PROJECT_REF: proj_ci
       TRANSLOADIT_KEY: ci
       TRANSLOADIT_SECRET: ci
-      R2_ACCOUNT_ID: 00000000000000000000000000000000
+      # Quoted: unquoted, YAML reads this as the number 0.
+      R2_ACCOUNT_ID: "00000000000000000000000000000000"
       R2_BUCKET: ci-bucket
       R2_ACCESS_KEY_ID: ci
       R2_SECRET_ACCESS_KEY: ci
