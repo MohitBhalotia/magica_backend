@@ -95,7 +95,20 @@ export const runService = {
   /** The chat's run in progress with a fresh token, so a reload can resume the live stream. */
   async activeHandle(chatId: string) {
     const run = await runRepository.findActive(chatId);
-    return run ? toHandle(run) : null;
+    if (!run) return null;
+    // Stopped, but its worker died before saving (a crash): end it here so the chat unlocks.
+    const ended =
+      run.status === RunStatus.stopping &&
+      run.triggerRunId !== null &&
+      (await runTask.hasEnded(run.triggerRunId).catch(() => false));
+    if (!ended) return toHandle(run);
+    await runService.settle(run, {
+      status: RunStatus.cancelled,
+      blocks: [],
+      text: "",
+      metadata: {},
+    });
+    return null;
   },
 
   /** Stop. Idempotent: a finished run comes back as is; one never dispatched is cancelled here. */
