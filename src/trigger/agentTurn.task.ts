@@ -4,6 +4,10 @@ import { z } from "zod";
 
 import { UI_STREAM } from "@mohitbhalotia/magica-contracts";
 
+import { skillCatalog } from "@/agent/skills/registry";
+import { AGENT_TOOLS } from "@/agent/tools";
+import { buildTools } from "@/agent/tools/define";
+import { skillIndex } from "@/agent/tools/skills";
 import { streamTurn, toStored, toTurnError, type TurnEnd } from "@/agent/turn";
 import { AppError } from "@/lib/errors";
 import { chatRepository } from "@/modules/chats/chat.repository";
@@ -33,14 +37,22 @@ export const agentTurn = schemaTask({
     if (!run) return { status: "skipped" };
 
     const history = await chatRepository.history(run.chatId, HISTORY_LIMIT);
-    const turn = streamTurn({
-      model: openRouterFree(),
-      messages: history.map((m) => ({
-        role: m.role === "user" ? ("user" as const) : ("assistant" as const),
-        content: m.text,
-      })),
+    const messages = history.map((m) => ({
+      role: m.role === "user" ? ("user" as const) : ("assistant" as const),
+      content: m.text,
+    }));
+    const tools = buildTools(AGENT_TOOLS, {
+      runId: run.id,
+      chatId: run.chatId,
+      userId: run.userId,
+      messageId: run.assistantMessageId,
       signal,
     });
+    // The model sees only skill names and descriptions; load_skill fetches a body (PRD §5.7).
+    const skills = skillCatalog(await skillIndex());
+    const instructions = `Skills (call load_skill before the task a skill covers):\n${skills}`;
+
+    const turn = streamTurn({ model: openRouterFree(), messages, tools, instructions, signal });
     // If Realtime itself breaks, the stream is never fully read: fail the turn instead of waiting.
     const end = await uiStream
       .pipe(turn.stream)

@@ -2,6 +2,7 @@ import {
   APICallError,
   createUIMessageStream,
   RetryError,
+  stepCountIs,
   StreamProviderError,
   streamText,
   toUIMessageStream,
@@ -47,20 +48,31 @@ function thinkingTimer() {
   };
 }
 
-const hasText = (message: AgentMessage) =>
-  message.parts.some((p) => p.type === "text" && p.text.trim());
+/** Model calls per turn: each tool round trip is a step (PRD §5.4 "max turns"). */
+const MAX_STEPS = 8;
 
 /**
- * One model answer as a UI message stream. The SDK retries a busy model (honouring Retry-After)
- * and provider errors mid-stream; we retry an empty answer once. `ended` resolves when the stream
- * has been fully read, with everything needed to save the turn (Stop and failures included).
+ * Something to keep: text or a tool call. An empty retry must never re-run tool work (a Magica
+ * call costs credits), so a turn that only called tools isn't "empty".
+ */
+const hasAnswer = (message: AgentMessage) =>
+  message.parts.some((p) => (p.type === "text" && p.text.trim()) || p.type.startsWith("tool-"));
+
+/**
+ * One agent turn as a UI message stream: the model answers, calling `tools` in a bounded loop. The
+ * SDK retries a busy model (honouring Retry-After) and provider errors mid-stream; we retry an
+ * empty answer once. `ended` resolves when the stream has been fully read, with everything needed
+ * to save the turn (Stop and failures included).
  */
 export function streamTurn(input: {
   model: LanguageModel;
   messages: ModelMessage[];
+  tools?: ToolSet;
+  /** Appended to the base prompt, e.g. the skill catalog. */
+  instructions?: string;
   signal?: AbortSignal;
 }) {
-  const { model, messages, signal } = input;
+  const { model, messages, tools, instructions, signal } = input;
   const ended = Promise.withResolvers<TurnEnd>();
   let usage: LanguageModelUsage | undefined;
   let routedModel: string | undefined;
@@ -72,8 +84,10 @@ export function streamTurn(input: {
         let error: unknown;
         const result = streamText({
           model,
-          system: SYSTEM_PROMPT,
+          system: instructions ? `${SYSTEM_PROMPT}\n\n${instructions}` : SYSTEM_PROMPT,
           messages,
+          tools,
+          stopWhen: stepCountIs(MAX_STEPS),
           abortSignal: signal,
           maxRetries: 3,
           streamRetries: 1,
@@ -100,7 +114,7 @@ export function streamTurn(input: {
         const message = await answer.promise;
         // Error chunks alone don't fail the stream; the outcome carries the error to `onEnd`.
         if (error !== undefined) writer.setOutcome({ status: "failed", error });
-        if (error !== undefined || signal?.aborted || hasText(message)) return;
+        if (error !== undefined || signal?.aborted || hasAnswer(message)) return;
         if (attempt === 2)
           throw new AppError("EMPTY_RESPONSE", "The model returned an empty answer. Try again.");
       }

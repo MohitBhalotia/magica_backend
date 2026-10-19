@@ -137,7 +137,8 @@ export const runRepository = {
       where: { id: run.assistantMessageId },
       data: {
         status: MESSAGE_STATUS[end.status],
-        contentBlocks: end.blocks,
+        // Blocks are parsed by ContentBlockSchema (JSON-safe); tool input/output are typed `unknown`.
+        contentBlocks: end.blocks as Prisma.InputJsonArray,
         metadata: end.metadata,
         text: end.text,
         runId: run.id,

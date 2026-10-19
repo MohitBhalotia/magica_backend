@@ -16,6 +16,15 @@ describe("ContentBlocksSchema", () => {
     ]);
   });
 
+  it("accepts a known tool's part and rejects unknown tools and states", () => {
+    const call = { toolCallId: "c1", state: "output-available", input: { name: "x" }, output: {} };
+    expect(ContentBlocksSchema.parse([{ type: "tool-load_skill", ...call }])).toHaveLength(1);
+    expect(ContentBlocksSchema.safeParse([{ type: "tool-rm_rf", ...call }]).success).toBe(false);
+    expect(
+      ContentBlocksSchema.safeParse([{ type: "tool-crop_image", ...call, state: "done" }]).success,
+    ).toBe(false);
+  });
+
   it("rejects unknown part types and states", () => {
     expect(ContentBlocksSchema.safeParse([{ type: "image", url: "x" }]).success).toBe(false);
     expect(ContentBlocksSchema.safeParse([{ type: "text", text: "x", state: "x" }]).success).toBe(
