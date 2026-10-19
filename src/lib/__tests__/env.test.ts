@@ -13,7 +13,7 @@ const api = {
   UPSTASH_REDIS_TOKEN: "t",
   TRIGGER_SECRET_KEY: "tr_test_x",
 };
-const worker = { ...db, OPENROUTER_API_KEY: "sk-or-x" };
+const worker = { ...db, OPENROUTER_API_KEY: "sk-or-x", MAGICA_API_KEY: "gx_x" };
 // Built explicitly: a literal U+FEFF in source is invisible.
 const BOM = String.fromCharCode(0xfeff);
 
@@ -33,7 +33,7 @@ describe("EnvSchema (API)", () => {
 });
 
 describe("WorkerEnvSchema", () => {
-  it("needs only the database and OpenRouter, never the API's Clerk or Upstash vars", () => {
+  it("needs only the database, OpenRouter and Magica, never the API's Clerk or Upstash vars", () => {
     expect(WorkerEnvSchema.safeParse(worker).success).toBe(true);
   });
 

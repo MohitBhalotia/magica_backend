@@ -1,18 +1,37 @@
 import { z } from "zod";
 
+import { ToolNameSchema, ToolStateSchema } from "./tools.ts";
+
 const state = z.enum(["streaming", "done"]).optional();
+
+/**
+ * A tool call and its result, as the AI SDK's `tool-<name>` UI part. Input and output are each
+ * tool's own shapes, validated by that tool on the backend before they're saved.
+ */
+export const ToolBlockSchema = z.object({
+  type: z.templateLiteral(["tool-", ToolNameSchema]),
+  toolCallId: z.string(),
+  state: ToolStateSchema,
+  input: z.unknown().optional(),
+  output: z.unknown().optional(),
+  errorText: z.string().optional(),
+});
+export type ToolBlock = z.infer<typeof ToolBlockSchema>;
 
 /**
  * A message's ordered content: a Zod copy of the AI SDK's `UIMessage` parts (DEC-052), so a live
  * (streamed) message and a saved one have the same shape and one renderer. Stored as JSONB and
- * validated before every write. M2 subset; M3 adds `tool-*` and `data-*` parts to this union.
+ * validated before every write.
  */
-export const ContentBlockSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("text"), text: z.string(), state }),
-  /** The model's thinking, shown collapsed ("Thought for Ns"). */
-  z.object({ type: z.literal("reasoning"), text: z.string(), state }),
-  /** Boundary between model steps; multi-step turns arrive with tools (M3). */
-  z.object({ type: z.literal("step-start") }),
+export const ContentBlockSchema = z.union([
+  z.discriminatedUnion("type", [
+    z.object({ type: z.literal("text"), text: z.string(), state }),
+    /** The model's thinking, shown collapsed ("Thought for Ns"). */
+    z.object({ type: z.literal("reasoning"), text: z.string(), state }),
+    /** Boundary between model steps: each tool round trip starts a new step. */
+    z.object({ type: z.literal("step-start") }),
+  ]),
+  ToolBlockSchema,
 ]);
 export type ContentBlock = z.infer<typeof ContentBlockSchema>;
 

@@ -14,6 +14,10 @@ export default defineConfig({
       UPSTASH_REDIS_URL: "https://dummy.upstash.io",
       UPSTASH_REDIS_TOKEN: "dummy",
       TRIGGER_SECRET_KEY: "tr_test_dummy",
+      OPENROUTER_API_KEY: "sk-or-test-dummy",
+      // Magica is mocked with MSW in tests; this host never receives a real request.
+      MAGICA_API_KEY: "gx_test_dummy",
+      MAGICA_BASE_URL: "https://magica.test/v1",
       LOG_LEVEL: "silent",
     },
     projects: [
@@ -33,6 +37,8 @@ export default defineConfig({
           globalSetup: ["./vitest.int.setup.ts"],
           setupFiles: ["./vitest.int.env.ts"],
           testTimeout: 30_000,
+          // Setup writes to Neon too, and is as slow as the tests when several files run at once.
+          hookTimeout: 30_000,
         },
       },
     ],

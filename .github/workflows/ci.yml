@@ -87,6 +87,7 @@ jobs:
           # Worker runtime secrets, pushed to Trigger.dev by syncEnvVars (trigger.config.ts).
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          MAGICA_API_KEY: ${{ secrets.MAGICA_API_KEY }}
       - name: Deploy API to Vercel (env vars come from the Vercel project)
         run: |
           pnpm dlx vercel@64.5.0 pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}

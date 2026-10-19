@@ -48,6 +48,7 @@ model Chat {
   user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages Message[]
   runs     AgentRun[]
+  assets   Asset[]
 
   /// Target of the (chatId, userId) ownership FKs on messages and runs.
   @@unique([id, userId])
@@ -117,10 +118,12 @@ model Message {
   completedAt     DateTime?     @map("completed_at")
 
   /// Ownership FK: the message's user must own the chat.
-  chat          Chat       @relation(fields: [chatId, userId], references: [id, userId], onDelete: Cascade)
-  run           AgentRun?  @relation("RunMessages", fields: [runId], references: [id], onDelete: SetNull)
-  userRuns      AgentRun[] @relation("RunUserMessage")
-  assistantRuns AgentRun[] @relation("RunAssistantMessage")
+  chat          Chat             @relation(fields: [chatId, userId], references: [id, userId], onDelete: Cascade)
+  run           AgentRun?        @relation("RunMessages", fields: [runId], references: [id], onDelete: SetNull)
+  userRuns      AgentRun[]       @relation("RunUserMessage")
+  assistantRuns AgentRun[]       @relation("RunAssistantMessage")
+  toolCalls     ToolInvocation[]
+  assets        Asset[]
 
   @@unique([chatId, clientMessageId])
   /// History: newest first, `before` cursor for older pages.
@@ -167,11 +170,13 @@ model AgentRun {
   createdAt          DateTime  @default(now()) @map("created_at")
 
   /// Ownership FK: the run's user must own the chat.
-  chat             Chat           @relation(fields: [chatId, userId], references: [id, userId], onDelete: Cascade)
-  userMessage      Message        @relation("RunUserMessage", fields: [userMessageId], references: [id], onDelete: Cascade)
-  assistantMessage Message        @relation("RunAssistantMessage", fields: [assistantMessageId], references: [id], onDelete: Cascade)
-  messages         Message[]      @relation("RunMessages")
+  chat             Chat             @relation(fields: [chatId, userId], references: [id, userId], onDelete: Cascade)
+  userMessage      Message          @relation("RunUserMessage", fields: [userMessageId], references: [id], onDelete: Cascade)
+  assistantMessage Message          @relation("RunAssistantMessage", fields: [assistantMessageId], references: [id], onDelete: Cascade)
+  messages         Message[]        @relation("RunMessages")
   ledger           CreditLedger[]
+  toolCalls        ToolInvocation[]
+  skills           RunSkill[]
 
   /// The lock behind "one active run per chat": a second active run is a unique violation.
   /// Predicate is written in Postgres' normalised form (status IN (...) is stored as = ANY), else Prisma sees drift.
@@ -200,18 +205,117 @@ model CreditLedger {
   /// Signed microcredits: positive adds to the balance, negative takes away.
   amountMicro    BigInt     @map("amount_micro")
   runId          String?    @map("run_id")
-  /// FK to tool_invocations is added with that table (M3).
   invocationId   String?    @map("invocation_id")
   /// Exactly-once: e.g. `charge:{invocationId}`; a retry can't charge twice.
   idempotencyKey String     @unique @map("idempotency_key")
   note           String?
   createdAt      DateTime   @default(now()) @map("created_at")
 
-  user User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user       User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
   // SetNull keeps the ledger row when a purged chat takes its runs with it.
-  run  AgentRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+  run        AgentRun?       @relation(fields: [runId], references: [id], onDelete: SetNull)
+  invocation ToolInvocation? @relation(fields: [invocationId], references: [id], onDelete: SetNull)
 
   /// /usage page: a user's ledger, newest first, cursor-paginated.
   @@index([userId, createdAt, id])
   @@map("credit_ledger")
+}
+
+/// pending → running → succeeded | failed | cancelled
+enum ToolState {
+  pending
+  running
+  succeeded
+  failed
+  cancelled
+
+  @@map("tool_state")
+}
+
+/// One tool call inside a turn. The orchestrator owns these rows; tools never write chat state.
+model ToolInvocation {
+  id             String    @id @default(cuid())
+  runId          String    @map("run_id")
+  /// The assistant message the call belongs to.
+  messageId      String    @map("message_id")
+  /// The model's id for the call; with runId it makes a retried step reuse this row.
+  toolCallId     String    @map("tool_call_id")
+  toolName       String    @map("tool_name")
+  /// Registry kind (skill, discovery, media, …); drives the renderer.
+  kind           String
+  /// Position of the call within the turn.
+  ordinal        Int
+  state          ToolState @default(pending)
+  /// Input with secrets removed and long prompts truncated, safe to show.
+  inputSanitized Json      @map("input_sanitized")
+  output         Json?
+  /// Set right after the Magica run is created, before waiting: a retry never creates a second run.
+  magicaRunId    String?   @unique @map("magica_run_id")
+  errorCode      String?   @map("error_code")
+  errorMessage   String?   @map("error_message")
+  attempt        Int       @default(1)
+  startedAt      DateTime  @default(now()) @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+  durationMs     Int?      @map("duration_ms")
+
+  run     AgentRun       @relation(fields: [runId], references: [id], onDelete: Cascade)
+  message Message        @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  assets  Asset[]
+  ledger  CreditLedger[]
+
+  @@unique([runId, toolCallId])
+  @@map("tool_invocations")
+}
+
+/// A skill loaded during a run, with the hash of the content the model saw (resume re-injects it).
+model RunSkill {
+  id          String   @id @default(cuid())
+  runId       String   @map("run_id")
+  skillName   String   @map("skill_name")
+  contentHash String   @map("content_hash")
+  version     String
+  loadedAt    DateTime @default(now()) @map("loaded_at")
+
+  run AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  /// A skill loads once per run; a repeat load returns the saved snapshot.
+  @@unique([runId, skillName])
+  @@map("run_skills")
+}
+
+enum AssetKind {
+  image
+  video
+
+  @@map("asset_kind")
+}
+
+/// A generated media file shown inline and in the files modal.
+model Asset {
+  id           String    @id @default(cuid())
+  userId       String    @map("user_id")
+  chatId       String    @map("chat_id")
+  messageId    String    @map("message_id")
+  invocationId String    @map("invocation_id")
+  kind         AssetKind
+  /// Provider URL for now; copying to R2 is decided with uploads (DEC-054).
+  url          String
+  mimeType     String    @map("mime_type")
+  width        Int?
+  height       Int?
+  durationMs   Int?      @map("duration_ms")
+  sizeBytes    BigInt?   @map("size_bytes")
+  /// The prompt or instruction that produced it, for the files modal.
+  prompt       String?
+  model        String
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  /// Ownership FK: the asset's user must own the chat.
+  chat       Chat           @relation(fields: [chatId, userId], references: [id, userId], onDelete: Cascade)
+  message    Message        @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  invocation ToolInvocation @relation(fields: [invocationId], references: [id], onDelete: Cascade)
+
+  /// Files modal: a chat's assets, newest first, cursor-paginated.
+  @@index([chatId, createdAt, id])
+  @@map("assets")
 }
