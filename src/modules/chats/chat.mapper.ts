@@ -4,6 +4,7 @@ import {
   ContentBlocksSchema,
   ErrorCodeSchema,
   MessageMetadataSchema,
+  type ChatAsset,
   type ChatSummary,
   type Message,
   type MessageRoleSchema,
@@ -58,6 +59,20 @@ export function excerpt(text: string, q: string) {
   const end = Math.min(text.length, at + q.length + SNIPPET_RADIUS);
   return `${start > 0 ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`;
 }
+
+export const toChatAsset = (a: Db.Asset): ChatAsset => ({
+  id: a.id,
+  kind: a.kind,
+  url: a.url,
+  mimeType: a.mimeType,
+  width: a.width ?? undefined,
+  height: a.height ?? undefined,
+  durationMs: a.durationMs ?? undefined,
+  sizeBytes: a.sizeBytes === null ? undefined : Number(a.sizeBytes),
+  prompt: a.prompt,
+  model: a.model,
+  createdAt: a.createdAt.toISOString(),
+});
 
 export const toSearchResult = (
   c: Db.Chat & { messages: { text: string }[] },

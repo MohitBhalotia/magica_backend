@@ -38,6 +38,11 @@ export const chatService = {
     return { chat, messages, activeRun };
   },
 
+  async assets(chatId: string, userId: string, limit: number, cursor?: string) {
+    const chat = await owned(chatId, userId);
+    return chatRepository.assets(chat.id, limit, cursor);
+  },
+
   /** First message: chat + user message + the run that answers it, in one transaction. */
   async create(userId: string, clientMessageId: string, text: string, ctx: Ctx) {
     const run = await db.$transaction(async (tx) => {

@@ -13,6 +13,7 @@ const MergeOutput = z.object({
   height: z.number().optional(),
   /** Seconds. */
   duration: z.number().optional(),
+  fileSize: z.number().optional(),
 });
 
 export const mergeVideosTool = defineTool({
@@ -29,7 +30,7 @@ export const mergeVideosTool = defineTool({
     runMediaTool(ctx, {
       job: { nodeType: "merge_videos", input },
       output: MergeOutput,
-      toAssets: ({ video_url, mimeType, width, height, duration }) => [
+      toAssets: ({ video_url, mimeType, width, height, duration, fileSize }) => [
         {
           kind: "video",
           url: video_url,
@@ -37,6 +38,7 @@ export const mergeVideosTool = defineTool({
           width,
           height,
           durationMs: duration === undefined ? undefined : Math.round(duration * 1000),
+          sizeBytes: fileSize,
         },
       ],
     }),

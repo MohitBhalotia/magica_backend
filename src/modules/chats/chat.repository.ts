@@ -30,6 +30,17 @@ export const chatRepository = {
   findOwned: (id: string, userId: string, db: DbClient = prisma) =>
     db.chat.findFirst({ where: { id, ...notDeleted(userId) } }),
 
+  /** The files modal: the chat's generated files, newest first (index chatId, createdAt, id). */
+  async assets(chatId: string, limit: number, cursor?: string, db: DbClient = prisma) {
+    const rows = await db.asset.findMany({
+      where: { chatId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
+      ...after(cursor),
+    });
+    return page(rows, limit);
+  },
+
   async messages(chatId: string, limit: number, cursor?: string, db: DbClient = prisma) {
     const rows = await db.message.findMany({
       where: { chatId },
