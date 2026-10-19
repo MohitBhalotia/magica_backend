@@ -79,7 +79,11 @@ describe("send", () => {
   it("a follow-up while a reply is running is RUN_ACTIVE and stores nothing", async () => {
     const user = newUser();
     const { chatId, run } = await first(user);
-    await expect(followUp(chatId, user)).rejects.toEqual(code("RUN_ACTIVE"));
+    // The client resumes the run already in progress from `details.activeRunId`.
+    await expect(followUp(chatId, user)).rejects.toMatchObject({
+      code: "RUN_ACTIVE",
+      details: { activeRunId: run.runId },
+    });
     const { messages, activeRun } = await chatService.get(chatId, user);
     expect(messages.items).toHaveLength(2); // no orphan user message
     expect(activeRun?.runId).toBe(run.runId);

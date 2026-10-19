@@ -162,6 +162,50 @@ describe("runMagicaModel", () => {
     expect(await savedRunId()).toBeNull();
   });
 
+  it("a busy Magica at create is tried again after its Retry-After", async () => {
+    const posts = magicaServes({ status: "COMPLETED", output });
+    server.use(
+      http.post(
+        `${MAGICA}/nodes/crop_image/run`,
+        () => HttpResponse.json({}, { status: 429, headers: { "Retry-After": "7" } }),
+        { once: true },
+      ),
+    );
+
+    expect(await runMagicaModel(job, ctx)).toMatchObject({ output });
+    expect(wait.for).toHaveBeenCalledWith({ seconds: 7 });
+    expect(posts).toHaveLength(1);
+  });
+
+  it("a flaky status check doesn't abandon a run Magica is still making", async () => {
+    magicaServes({ status: "COMPLETED", output });
+    server.use(
+      http.get(
+        `${MAGICA}/nodes/runs/${magicaRunId}`,
+        () => HttpResponse.json({}, { status: 502 }),
+        {
+          once: true,
+        },
+      ),
+    );
+
+    expect(await runMagicaModel(job, ctx)).toMatchObject({ output });
+    expect(await savedRunId()).toBe(magicaRunId);
+  });
+
+  it("a failed create is not retried unless Magica said it was busy", async () => {
+    let posts = 0;
+    server.use(
+      http.post(`${MAGICA}/nodes/crop_image/run`, () => {
+        posts++;
+        return HttpResponse.json({}, { status: 500 });
+      }),
+    );
+
+    await expect(runMagicaModel(job, ctx)).rejects.toMatchObject({ code: "PROVIDER_ERROR" });
+    expect(posts).toBe(1);
+  });
+
   it("Stop drops the wait at once", async () => {
     magicaServes({ status: "RUNNING" });
     vi.mocked(wait.forToken).mockReturnValueOnce(new Promise(() => undefined) as never);

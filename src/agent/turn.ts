@@ -12,6 +12,7 @@ import {
   type ModelMessage,
   type TextStreamPart,
   type ToolSet,
+  type InferUIMessageChunk,
   type UIMessage,
 } from "ai";
 
@@ -29,6 +30,7 @@ export const SYSTEM_PROMPT =
 
 /** The assistant message as the AI SDK streams it; its parts are our content blocks (DEC-052). */
 export type AgentMessage = UIMessage<MessageMetadata>;
+type AgentChunk = InferUIMessageChunk<AgentMessage>;
 
 export type TurnEnd = {
   status: "completed" | "failed" | "cancelled";
@@ -60,8 +62,24 @@ function turnTimer() {
   };
 }
 
+/**
+ * The browser's copy of the stream, with signed attachment links cut to their paths (the tools
+ * still get the signed links). Input deltas are dropped: a link split across two can't be matched,
+ * and `tool-input-available` brings the whole input anyway.
+ * shortcut: a link the model echoes split across text deltas still streams signed (the saved copy
+ * is clean); buffer text per link if models start echoing them.
+ */
+const unsigned = () =>
+  new TransformStream<AgentChunk, AgentChunk>({
+    transform(chunk, controller) {
+      if (chunk.type !== "tool-input-delta") controller.enqueue(withoutSignatures(chunk));
+    },
+  });
+
 /** Model calls per turn: each tool round trip is a step (PRD §5.4 "max turns"). */
 const MAX_STEPS = 8;
+export const STEP_LIMIT_NOTICE =
+  "I've reached the step limit for one reply. Say \"continue\" and I'll pick up from here.";
 
 /**
  * Something to keep: text or a tool call. An empty retry must never re-run tool work (a Magica
@@ -94,6 +112,8 @@ export function streamTurn(input: {
       writer.write({ type: "start" });
       for (let attempt = 1; ; attempt++) {
         let error: unknown;
+        // Set in `onEnd`; an object so TypeScript doesn't narrow it to `false`.
+        const limit = { hit: false };
         const result = streamText({
           model,
           system: instructions ? `${SYSTEM_PROMPT}\n\n${instructions}` : SYSTEM_PROMPT,
@@ -109,6 +129,8 @@ export function streamTurn(input: {
           onEnd: (event) => {
             usage = event.usage;
             routedModel = event.finalStep.response.modelId;
+            // The loop hit the limit while the model still wanted tools (`stepNumber` is 0-based).
+            limit.hit = event.finishReason === "tool-calls" && event.stepNumber + 1 >= MAX_STEPS;
           },
         });
         const answer = Promise.withResolvers<AgentMessage>();
@@ -121,9 +143,16 @@ export function streamTurn(input: {
             onEnd: ({ responseMessage }) => {
               answer.resolve(responseMessage);
             },
-          }),
+          }).pipeThrough(unsigned()),
         );
         const message = await answer.promise;
+        // Otherwise a turn cut off mid-loop would end silently. Plain text: no contract change.
+        if (limit.hit && error === undefined && !signal?.aborted) {
+          const id = "step-limit";
+          writer.write({ type: "text-start", id });
+          writer.write({ type: "text-delta", id, delta: `\n\n${STEP_LIMIT_NOTICE}` });
+          writer.write({ type: "text-end", id });
+        }
         // Error chunks alone don't fail the stream; the outcome carries the error to `onEnd`.
         if (error !== undefined) writer.setOutcome({ status: "failed", error });
         if (error !== undefined || signal?.aborted || hasAnswer(message)) return;

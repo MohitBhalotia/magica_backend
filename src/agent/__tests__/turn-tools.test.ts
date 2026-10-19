@@ -3,7 +3,7 @@ import { MockLanguageModelV4 } from "ai/test";
 import { expect, it, vi } from "vitest";
 import { z } from "zod";
 
-import { streamTurn, toStored } from "@/agent/turn";
+import { STEP_LIMIT_NOTICE, streamTurn, toStored } from "@/agent/turn";
 
 type MockDoStream = NonNullable<ConstructorParameters<typeof MockLanguageModelV4>[0]>["doStream"];
 
@@ -88,4 +88,50 @@ it("a turn that called tools but wrote no text isn't retried as empty (tools wou
   expect(calls).toBe(2); // the tool step + the empty follow-up; no third, retried attempt
   expect(execute).toHaveBeenCalledOnce();
   expect(end.status).toBe("completed");
+});
+
+it("a turn cut off by the step limit says so instead of ending silently", async () => {
+  // The model asks for a tool on every step, so only the limit stops it.
+  const { end, calls } = await run(callLoadSkill);
+
+  expect(calls).toBe(8);
+  expect(end.status).toBe("completed");
+  expect(toStored(end.message).text).toBe(STEP_LIMIT_NOTICE);
+});
+
+it("a turn that finishes within the limit has no step-limit notice", async () => {
+  const { end } = await run(callLoadSkill, () => say("Cropped it."));
+  expect(toStored(end.message).text).not.toContain(STEP_LIMIT_NOTICE);
+});
+
+it("streams tool inputs and outputs without signed links, while the tool still gets them", async () => {
+  const signed =
+    "https://0123abcd.r2.cloudflarestorage.com/magica/uploads/u/a?X-Amz-Expires=3600&X-Amz-Signature=abc";
+  const input = JSON.stringify({ name: signed });
+  const callWithLink = () =>
+    step(
+      [
+        { type: "tool-input-start", id: "call-1", toolName: "load_skill" },
+        { type: "tool-input-delta", id: "call-1", delta: input.slice(0, 40) },
+        { type: "tool-input-delta", id: "call-1", delta: input.slice(40) },
+        { type: "tool-input-end", id: "call-1" },
+        { type: "tool-call", toolCallId: "call-1", toolName: "load_skill", input },
+      ],
+      "tool-calls",
+    );
+  const { chunks, execute } = await run(callWithLink, () => say("Done."));
+
+  expect(execute.mock.calls[0]?.[0]).toEqual({ name: signed });
+  expect(JSON.stringify(chunks)).not.toContain("X-Amz");
+  expect(chunks.map((c) => c.type)).not.toContain("tool-input-delta");
+  const bare = signed.split("?")[0];
+  expect(chunks).toContainEqual(
+    expect.objectContaining({ type: "tool-input-available", input: { name: bare } }),
+  );
+  expect(chunks).toContainEqual(
+    expect.objectContaining({
+      type: "tool-output-available",
+      output: { name: bare, alreadyLoaded: false },
+    }),
+  );
 });

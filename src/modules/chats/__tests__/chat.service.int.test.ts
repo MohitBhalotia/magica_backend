@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { db } from "@/lib/db";
 import type { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { chatService, PROMPT_TITLE_LENGTH } from "@/modules/chats/chat.service";
@@ -42,6 +43,49 @@ describe("create", () => {
     const retry = await chatService.create(user, clientMessageId, "hello", ctx);
     expect(retry).toEqual(first);
     expect((await chatService.get(first.chatId, user)).messages.items).toHaveLength(2);
+  });
+
+  it("concurrent first sends with the same clientMessageId share one chat, message and run", async () => {
+    const user = newUser();
+    const clientMessageId = randomUUID();
+    const [a, b] = await Promise.all([
+      chatService.create(user, clientMessageId, "hello", ctx),
+      chatService.create(user, clientMessageId, "hello", ctx),
+    ]);
+    expect(b.run.runId).toBe(a.run.runId);
+    expect(b.userMessageId).toBe(a.userMessageId);
+    expect(await db.agentRun.count({ where: { chatId: a.chatId } })).toBe(1);
+    expect((await chatService.get(a.chatId, user)).messages.items).toHaveLength(2);
+  });
+});
+
+describe("get", () => {
+  it("pages messages newest first: the next page is older, with no overlap", async () => {
+    const user = newUser();
+    const { chatId } = await send(user);
+    // 55 older messages, one second apart, so the chat has 57 (two pages of 50).
+    const start = Date.now() - 3_600_000;
+    await db.message.createMany({
+      data: Array.from({ length: 55 }, (_, i) => ({
+        chatId,
+        userId: user,
+        role: "user" as const,
+        status: "success" as const,
+        text: `old ${String(i)}`,
+        createdAt: new Date(start + i * 1000),
+      })),
+    });
+
+    const first = (await chatService.get(chatId, user)).messages;
+    expect(first.items).toHaveLength(50);
+    expect(first.nextCursor).toBe(first.items.at(-1)?.id);
+    const second = (await chatService.get(chatId, user, first.nextCursor ?? undefined)).messages;
+    expect(second.items).toHaveLength(7);
+    expect(second.nextCursor).toBeNull();
+    const oldestOnFirst = first.items.at(-1)?.createdAt ?? new Date();
+    expect(second.items.every((m) => m.createdAt <= oldestOnFirst)).toBe(true);
+    const ids = [...first.items, ...second.items].map((m) => m.id);
+    expect(new Set(ids).size).toBe(57);
   });
 });
 
