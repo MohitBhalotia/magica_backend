@@ -69,8 +69,10 @@ it("runs a tool, feeds the result back, and saves the tool part before the answe
   expect(calls).toBe(2);
   expect(execute).toHaveBeenCalledOnce();
   expect(end.status).toBe("completed");
-  const { blocks, text } = toStored(end.message);
+  const { blocks, text, metadata } = toStored(end.message);
   expect(text).toBe("Cropped it.");
+  // The step row's duration, streamed and saved as message metadata.
+  expect(metadata.toolMs?.["call-1"]).toBeGreaterThanOrEqual(0);
   expect(blocks.map((b) => b.type)).toContain("tool-load_skill");
   expect(blocks.find((b) => b.type === "tool-load_skill")).toMatchObject({
     toolCallId: "call-1",

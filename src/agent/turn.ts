@@ -37,13 +37,23 @@ export type TurnEnd = {
   routedModel?: string;
 };
 
-/** Thinking time, from the first reasoning part to the last, sent as message metadata. */
-function thinkingTimer() {
-  let startedAt: number | undefined;
+/**
+ * Timings sent as message metadata (the SDK deep-merges each update into the message): thinking
+ * time, from the first reasoning part to the last, and each tool call's time, from the call to its
+ * result or error.
+ */
+function turnTimer() {
+  let thinkingStartedAt: number | undefined;
+  const toolStartedAt = new Map<string, number>();
   return ({ part }: { part: TextStreamPart<ToolSet> }): MessageMetadata | undefined => {
-    if (part.type === "reasoning-start") startedAt ??= Date.now();
-    if (part.type === "reasoning-end" && startedAt !== undefined)
-      return { thinkingMs: Date.now() - startedAt };
+    if (part.type === "reasoning-start") thinkingStartedAt ??= Date.now();
+    if (part.type === "reasoning-end" && thinkingStartedAt !== undefined)
+      return { thinkingMs: Date.now() - thinkingStartedAt };
+    if (part.type === "tool-call") toolStartedAt.set(part.toolCallId, Date.now());
+    if (part.type === "tool-result" || part.type === "tool-error") {
+      const startedAt = toolStartedAt.get(part.toolCallId);
+      if (startedAt !== undefined) return { toolMs: { [part.toolCallId]: Date.now() - startedAt } };
+    }
     return undefined;
   };
 }
@@ -104,7 +114,7 @@ export function streamTurn(input: {
           toUIMessageStream<ToolSet, AgentMessage>({
             stream: result.stream,
             sendStart: false,
-            messageMetadata: thinkingTimer(),
+            messageMetadata: turnTimer(),
             onError: (err) => toTurnError(err).message,
             onEnd: ({ responseMessage }) => {
               answer.resolve(responseMessage);
