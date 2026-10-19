@@ -61,6 +61,22 @@ export const runRepository = {
   findActive: (chatId: string, db: DbClient = prisma) =>
     db.agentRun.findFirst({ where: { chatId, status: { in: ACTIVE } } }),
 
+  /** Sweeper: runs never handed to Trigger.dev (the API died after saving), oldest first. */
+  findUndispatched: (before: Date, limit: number, db: DbClient = prisma) =>
+    db.agentRun.findMany({
+      where: { status: RunStatus.queued, triggerRunId: null, createdAt: { lt: before } },
+      orderBy: { createdAt: "asc" },
+      take: limit,
+    }),
+
+  /** Sweeper: dispatched runs still active since before `before`, oldest first. */
+  findLongRunning: (before: Date, limit: number, db: DbClient = prisma) =>
+    db.agentRun.findMany({
+      where: { status: { in: ACTIVE }, triggerRunId: { not: null }, createdAt: { lt: before } },
+      orderBy: { createdAt: "asc" },
+      take: limit,
+    }),
+
   /** The chat's most recent run: only it may be retried, so a retry never answers out of order. */
   findLatest: (chatId: string, db: DbClient = prisma) =>
     db.agentRun.findFirst({ where: { chatId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] }),

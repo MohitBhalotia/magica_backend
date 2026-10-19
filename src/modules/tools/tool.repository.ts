@@ -28,6 +28,10 @@ export const toolRepository = {
       update: {},
     }),
 
+  /** A run's calls that never finished (their worker died). */
+  findRunning: (runId: string, db: DbClient = prisma) =>
+    db.toolInvocation.findMany({ where: { runId, state: ToolState.running } }),
+
   get: (id: string, db: DbClient = prisma) =>
     db.toolInvocation.findUniqueOrThrow({ where: { id } }),
 
