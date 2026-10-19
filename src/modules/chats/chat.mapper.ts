@@ -45,6 +45,7 @@ export const toMessage = (m: Db.Message): Message => ({
   errorMessage: m.errorMessage,
   createdAt: m.createdAt.toISOString(),
   completedAt: m.completedAt?.toISOString() ?? null,
+  runId: m.runId,
 });
 
 const SNIPPET_RADIUS = 60;
