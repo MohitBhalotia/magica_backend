@@ -68,6 +68,13 @@ export const waitpointRepository = {
     return count === 1;
   },
 
+  /** A dead run's open question can no longer be answered. */
+  cancelPending: (runId: string, db: DbClient = prisma) =>
+    db.waitpoint.updateMany({
+      where: { runId, status: WaitpointStatus.pending },
+      data: { status: WaitpointStatus.cancelled },
+    }),
+
   /** pending → expired or cancelled; an answered waitpoint stays answered. */
   close: (
     id: string,

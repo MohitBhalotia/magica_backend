@@ -8,6 +8,7 @@ import { creditRepository } from "@/modules/credits/credit.repository";
 import { creditService } from "@/modules/credits/credit.service";
 import { isActive, runRepository, type RunEnd } from "@/modules/runs/run.repository";
 import { runTask } from "@/modules/runs/run.task";
+import { toolRepository } from "@/modules/tools/tool.repository";
 import { toWaitpoint, waitpointRepository } from "@/modules/waitpoints/waitpoint.repository";
 
 import { Prisma, RunStatus, type AgentRun } from "../../../prisma/generated/client";
@@ -46,6 +47,41 @@ async function dispatch(run: AgentRun, { logger }: Ctx) {
     logger.error({ err, runId: run.id }, "agent-turn dispatch failed; run left queued");
     return run;
   }
+}
+
+/** Queued this long without a Trigger.dev run: its dispatch was lost. */
+const REDISPATCH_AFTER_MS = 30_000;
+/** Runs younger than this are left alone: a live turn always has a running Trigger.dev run. */
+const STALE_AFTER_MS = 2 * 60_000;
+/** Runs looked at per sweep, each way (each check is one Trigger.dev API call). */
+const SWEEP_LIMIT = 50;
+
+/** Whether Trigger.dev has finished this run's task while we still think it's active. */
+const hasDied = async (run: AgentRun) =>
+  run.triggerRunId !== null && (await runTask.hasEnded(run.triggerRunId).catch(() => false));
+
+/**
+ * Ends a run whose worker died without saving: its open question is cancelled, held tool credits
+ * are released (unfinished work is never charged), and the turn ends cancelled if the user had
+ * stopped it, else failed with STALE. Settling also frees the chat and the admission reserve.
+ */
+async function settleDead(run: AgentRun) {
+  await waitpointRepository.cancelPending(run.id);
+  for (const call of await toolRepository.findRunning(run.id)) {
+    await creditService.releaseTool({ userId: run.userId, runId: run.id, invocationId: call.id });
+    await toolRepository.cancel(call);
+  }
+  const unsaved = { blocks: [], text: "", metadata: {} };
+  await runService.settle(
+    run,
+    run.status === RunStatus.stopping
+      ? { ...unsaved, status: RunStatus.cancelled }
+      : {
+          ...unsaved,
+          status: RunStatus.failed,
+          error: { code: "STALE", message: "This reply stopped unexpectedly. Try again." },
+        },
+  );
 }
 
 /** A new run holds the admission reserve in the same transaction, so a 402 saves nothing. */
@@ -97,18 +133,37 @@ export const runService = {
     const run = await runRepository.findActive(chatId);
     if (!run) return null;
     // Stopped, but its worker died before saving (a crash): end it here so the chat unlocks.
-    const ended =
-      run.status === RunStatus.stopping &&
-      run.triggerRunId !== null &&
-      (await runTask.hasEnded(run.triggerRunId).catch(() => false));
-    if (!ended) return toHandle(run);
-    await runService.settle(run, {
-      status: RunStatus.cancelled,
-      blocks: [],
-      text: "",
-      metadata: {},
-    });
+    if (run.status !== RunStatus.stopping || !(await hasDied(run))) return toHandle(run);
+    await settleDead(run);
     return null;
+  },
+
+  /**
+   * Cron (every minute, ARCHITECTURE §11), at most SWEEP_LIMIT runs each way:
+   * - re-dispatch runs left queued with no Trigger.dev run (the API died after saving); the same
+   *   idempotency key means a run can't start twice;
+   * - end runs whose Trigger.dev run finished without saving (a crash), freeing their chat.
+   */
+  async sweep(logger: Logger) {
+    const now = Date.now();
+    const ctx = { traceId: "run-sweeper", logger };
+
+    const queued = await runRepository.findUndispatched(
+      new Date(now - REDISPATCH_AFTER_MS),
+      SWEEP_LIMIT,
+    );
+    for (const run of queued) await dispatch(run, ctx);
+
+    const active = await runRepository.findLongRunning(new Date(now - STALE_AFTER_MS), SWEEP_LIMIT);
+    let settled = 0;
+    for (const run of active) {
+      if (!(await hasDied(run))) continue;
+      await settleDead(run);
+      settled++;
+    }
+    if (queued.length || settled)
+      logger.warn({ redispatched: queued.length, settled }, "run sweeper recovered runs");
+    return { redispatched: queued.length, settled };
   },
 
   /** Stop. Idempotent: a finished run comes back as is; one never dispatched is cancelled here. */
