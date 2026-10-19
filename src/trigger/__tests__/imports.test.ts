@@ -25,4 +25,5 @@ it("task files import with only the worker's env", async () => {
   await expect(import("@/trigger/agentTurn.task")).resolves.toBeDefined();
   await expect(import("@/trigger/chatTitle.task")).resolves.toBeDefined();
   await expect(import("@/trigger/runSweeper.task")).resolves.toBeDefined();
+  await expect(import("@/trigger/webhookDeliver.task")).resolves.toBeDefined();
 });

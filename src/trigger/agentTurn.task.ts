@@ -13,6 +13,7 @@ import { AppError } from "@/lib/errors";
 import { chatRepository } from "@/modules/chats/chat.repository";
 import { directToolOf, runRepository } from "@/modules/runs/run.repository";
 import { runService } from "@/modules/runs/run.service";
+import { runEvent, webhookService } from "@/modules/webhooks/webhook.service";
 import { directTool } from "@/providers/directTool";
 import { openRouterFree } from "@/providers/openrouter";
 import { signedUrl } from "@/providers/r2";
@@ -56,6 +57,10 @@ export const agentTurn = schemaTask({
   run: async ({ runId }, { signal }) => {
     const run = await runRepository.begin(runId);
     if (!run) return { status: "skipped" };
+    // Its id is fixed per run, so a re-entered turn doesn't announce itself twice.
+    await webhookService.dispatch(
+      await webhookService.emit(run.userId, runEvent(run, "agent.started", { status: run.status })),
+    );
 
     const history = await chatRepository.history(run.chatId, HISTORY_LIMIT);
     const messages = await Promise.all(

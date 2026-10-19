@@ -22,8 +22,60 @@ model User {
   ledger        CreditLedger[]
   attachments   Attachment[]
   apiKeys       ApiKey[]
+  webhooks      WebhookEndpoint[]
 
   @@map("users")
+}
+
+/// Where a user wants lifecycle events POSTed (PRD §6.8), signed with `secret` (Standard Webhooks).
+model WebhookEndpoint {
+  id         String    @id @default(cuid())
+  userId     String    @map("user_id")
+  url        String
+  /// `whsec_…`; kept as is, because signing needs it.
+  secret     String
+  /// The event types to send (contracts WEBHOOK_EVENTS).
+  events     String[]
+  createdAt  DateTime  @default(now()) @map("created_at")
+  disabledAt DateTime? @map("disabled_at")
+
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  /// The user's endpoints, newest first, cursor-paginated.
+  @@index([userId, createdAt, id])
+  @@map("webhook_endpoints")
+}
+
+enum DeliveryStatus {
+  pending
+  delivered
+  failed
+
+  @@map("delivery_status")
+}
+
+/// One event for one endpoint: the outbox row, written with the change it reports. The unique
+/// (endpoint, event) pair makes each event reach each endpoint at most once.
+model WebhookDelivery {
+  id          String         @id @default(cuid())
+  endpointId  String         @map("endpoint_id")
+  eventId     String         @map("event_id")
+  type        String
+  /// The WebhookEvent body (contracts), validated before it's written.
+  payload     Json
+  status      DeliveryStatus @default(pending)
+  attempts    Int            @default(0)
+  lastError   String?        @map("last_error")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  deliveredAt DateTime?      @map("delivered_at")
+
+  endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@unique([endpointId, eventId])
+  /// The sweeper: pending deliveries never handed to a task, oldest first.
+  @@index([status, createdAt])
+  @@map("webhook_deliveries")
 }
 
 /// A public API key (PRD §6.8). Only the SHA-256 of the key is stored; the key is shown once.
