@@ -1,6 +1,6 @@
 {
   "name": "@mohitbhalotia/magica-contracts",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Zod contracts shared by the Magica backend and frontend",
   "repository": {
     "type": "git",
@@ -16,7 +16,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && pnpm build"
   },
   "peerDependencies": {
     "zod": "^4.6.0"
