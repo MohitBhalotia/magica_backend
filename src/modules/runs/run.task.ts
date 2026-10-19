@@ -30,6 +30,9 @@ export const runTask = {
   /** Asks Trigger.dev to stop the task; its onCancel hook persists the partial answer. */
   cancel: (triggerRunId: string) => runs.cancel(triggerRunId),
 
+  /** Whether Trigger.dev has finished the task, however it ended (crashes included). */
+  hasEnded: async (triggerRunId: string) => (await runs.retrieve(triggerRunId)).isCompleted,
+
   /** A browser token that can read only this one run, for an hour. */
   token: (triggerRunId: string) =>
     auth.createPublicToken({ scopes: { read: { runs: [triggerRunId] } }, expirationTime: "1h" }),

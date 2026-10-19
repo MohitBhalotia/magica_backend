@@ -17,7 +17,7 @@ const { fakeTrigger } = vi.hoisted(() => ({
 vi.mock("@trigger.dev/sdk", () => ({
   tasks: { trigger: vi.fn(fakeTrigger) },
   auth: { createPublicToken: vi.fn(() => "pk_test") },
-  runs: { cancel: vi.fn() },
+  runs: { cancel: vi.fn(), retrieve: vi.fn() },
 }));
 
 const newUser = () => `user_test_${randomUUID()}`;
@@ -119,6 +119,23 @@ describe("cancel", () => {
     const stopped = await runService.cancel(run.runId, user, ctx);
     expect(stopped.status).toBe("stopping");
     expect(runs.cancel).toHaveBeenCalledWith(run.triggerRunId);
+  });
+
+  it("a stopped run whose worker died is ended on the next read, unlocking the chat", async () => {
+    const user = newUser();
+    const { run, chatId } = await first(user);
+    await runService.cancel(run.runId, user, ctx);
+
+    // The worker is still saving: the run stays stopping.
+    vi.mocked(runs.retrieve).mockResolvedValueOnce({ isCompleted: false } as never);
+    expect(await runService.activeHandle(chatId)).toMatchObject({ status: "stopping" });
+
+    // Trigger.dev says the task is over, but nothing settled the run (a crash).
+    vi.mocked(runs.retrieve).mockResolvedValueOnce({ isCompleted: true } as never);
+    expect(await runService.activeHandle(chatId)).toBeNull();
+    const { messages } = await chatService.get(chatId, user);
+    expect(messages.items[0]).toMatchObject({ status: "cancelled", runId: run.runId });
+    await expect(followUp(chatId, user)).resolves.toMatchObject({ chatId });
   });
 
   it("an undispatched run is cancelled right away; cancelling again is a no-op", async () => {
