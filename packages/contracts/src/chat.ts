@@ -51,6 +51,8 @@ export const MessageSchema = z.object({
   errorMessage: z.string().nullable(),
   createdAt: z.iso.datetime(),
   completedAt: z.iso.datetime().nullable(),
+  /** The run that wrote this reply (assistant), e.g. to retry it; null on user messages. */
+  runId: z.string().nullable(),
 });
 export type Message = z.infer<typeof MessageSchema>;
 

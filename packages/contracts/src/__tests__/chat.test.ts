@@ -81,6 +81,7 @@ describe("ChatDetailSchema", () => {
     errorMessage: null,
     createdAt: at,
     completedAt: at,
+    runId: null,
   });
   const page = (role: string) => ({
     ...summary,

@@ -90,10 +90,13 @@ describe("cancel", () => {
   it("an undispatched run is cancelled right away; cancelling again is a no-op", async () => {
     const user = newUser();
     vi.mocked(tasks.trigger).mockRejectedValueOnce(new Error("trigger down"));
-    const { run } = await first(user);
+    const { run, chatId } = await first(user);
     expect((await runService.cancel(run.runId, user, ctx)).status).toBe("cancelled");
     expect((await runService.cancel(run.runId, user, ctx)).status).toBe("cancelled");
     expect(runs.cancel).not.toHaveBeenCalled();
+    // The stopped reply points at its run, so the chat can offer Retry.
+    const { messages } = await chatService.get(chatId, user);
+    expect(messages.items[0]?.runId).toBe(run.runId);
   });
 });
 

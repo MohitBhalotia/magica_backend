@@ -100,7 +100,7 @@ export const runRepository = {
     const now = new Date();
     await db.message.update({
       where: { id: run.assistantMessageId },
-      data: { status: MessageStatus.cancelled, completedAt: now },
+      data: { status: MessageStatus.cancelled, completedAt: now, runId: run.id },
     });
     return db.agentRun.update({
       where: { id: run.id },
