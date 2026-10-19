@@ -171,6 +171,63 @@ describe("uploads", () => {
     expect(await db.chat.count({ where: { userId } })).toBe(0);
   });
 
+  it("a failed or cancelled job fails the upload; a job for an unknown file is ignored", async () => {
+    const { attachment: failed } = await uploadService.create(userId, photo(), NOTIFY);
+    const { attachment: cancelled } = await uploadService.create(userId, photo(), NOTIFY);
+
+    await uploadService.settle({
+      ...completed(failed.id),
+      ok: undefined,
+      error: "INTERNAL_COMMAND_ERROR",
+    });
+    await uploadService.settle({ ...completed(cancelled.id), ok: "ASSEMBLY_CANCELED" });
+    await uploadService.settle(completed("att_unknown"));
+    await uploadService.settle({ ...completed(failed.id), fields: {} });
+
+    const rows = await db.attachment.findMany({ where: { id: { in: [failed.id, cancelled.id] } } });
+    expect(rows.map((row) => [row.status, row.error])).toEqual([
+      ["failed", "The upload failed. Try again."],
+      ["failed", "The upload failed. Try again."],
+    ]);
+  });
+
+  it("a video keeps its duration; a running job leaves the upload as it is", async () => {
+    const { attachment } = await uploadService.create(
+      userId,
+      photo({ name: "clip.mp4", mimeType: "video/mp4" }),
+      NOTIFY,
+    );
+
+    await uploadService.settle({ ...completed(attachment.id), ok: "ASSEMBLY_UPLOADING" });
+    expect((await db.attachment.findUniqueOrThrow({ where: { id: attachment.id } })).status).toBe(
+      "uploading",
+    );
+
+    await uploadService.settle({
+      ...completed(attachment.id),
+      results: { stored: [{ meta: { width: 640, height: 360, duration: 20.022 } }] },
+    });
+    const row = await db.attachment.findUniqueOrThrow({ where: { id: attachment.id } });
+    expect(row).toMatchObject({ kind: "video", status: "ready", durationMs: 20022 });
+  });
+
+  it("confirming a finished upload doesn't ask Transloadit again", async () => {
+    const id = await ready();
+
+    // No Transloadit handler: a call would fail the test (unhandled request).
+    expect(await uploadService.complete(userId, id, "asm_done")).toMatchObject({ status: "ready" });
+  });
+
+  it("the library pages newest first with no gaps", async () => {
+    const ids = [await ready(), await ready(), await ready()];
+
+    const first = await uploadService.list(userId, 2);
+    const second = await uploadService.list(userId, 2, first.nextCursor ?? undefined);
+
+    expect([...first.items, ...second.items].map((a) => a.id)).toEqual(ids.reverse());
+    expect(second.nextCursor).toBeNull();
+  });
+
   it("someone else's upload is NOT_FOUND", async () => {
     const { attachment } = await uploadService.create(userId, photo(), NOTIFY);
 
