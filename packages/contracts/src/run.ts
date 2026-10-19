@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { WaitpointSchema } from "./waitpoints.ts";
+
 /**
  * Agent run lifecycle; mirrors the Prisma enum (parity checked in the backend, DEC-048).
  * queued → thinking → working ⇄ waiting → completed | failed | cancelled; stopping on user Stop.
@@ -31,5 +33,7 @@ export const RunHandleSchema = z.object({
   status: RunStatusSchema,
   triggerRunId: z.string().nullable(),
   publicAccessToken: z.string().nullable(),
+  /** The run's pending waitpoint, so a reload shows the question again (PRD §5.8). */
+  waitpoint: WaitpointSchema.nullable().default(null),
 });
 export type RunHandle = z.infer<typeof RunHandleSchema>;

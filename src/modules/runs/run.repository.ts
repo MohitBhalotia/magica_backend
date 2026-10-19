@@ -88,6 +88,16 @@ export const runRepository = {
     });
   },
 
+  /** Waiting on the user (or back to work). A run that is stopping or has ended keeps its status. */
+  setWaiting: (id: string, waiting: boolean, db: DbClient = prisma) =>
+    db.agentRun.updateMany({
+      where: {
+        id,
+        status: { in: [RunStatus.thinking, RunStatus.working, RunStatus.waiting] },
+      },
+      data: { status: waiting ? RunStatus.waiting : RunStatus.working },
+    }),
+
   setTriggerRunId: (id: string, triggerRunId: string, db: DbClient = prisma) =>
     db.agentRun.update({ where: { id }, data: { triggerRunId } }),
 

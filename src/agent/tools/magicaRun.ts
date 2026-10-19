@@ -54,7 +54,7 @@ export async function runMagicaModel(job: MagicaJob, ctx: ToolContext): Promise<
 }
 
 /** Stop shouldn't wait for Magica: the wait is dropped as soon as the turn is aborted. */
-function untilStopped<T>(waiting: PromiseLike<T>, signal?: AbortSignal): Promise<T> {
+export function untilStopped<T>(waiting: PromiseLike<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) return Promise.resolve(waiting);
   signal.throwIfAborted();
   const stopped = new Promise<never>((_, reject) => {

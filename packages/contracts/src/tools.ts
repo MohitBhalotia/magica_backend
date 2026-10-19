@@ -14,6 +14,9 @@ export const TOOLS = {
   crop_image: "media",
   gpt_image_2: "media",
   merge_videos: "media",
+  /** They pause the run on a waitpoint until the user answers (M4b). */
+  ask_user: "interaction",
+  propose_plan: "interaction",
 } as const;
 
 export type ToolName = keyof typeof TOOLS;

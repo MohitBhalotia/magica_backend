@@ -18,6 +18,9 @@ export const ErrorCodeSchema = z.enum([
   "PROVIDER_ERROR",
   "GENERATION_FAILED",
   "GENERATION_TIMEOUT",
+  "APPROVAL_DECLINED",
+  "WAITPOINT_EXPIRED",
+  "WAITPOINT_CLOSED",
   "STALE",
   "INTERNAL",
 ]);
@@ -41,6 +44,12 @@ export const errorStatus = {
   PROVIDER_ERROR: 502,
   GENERATION_FAILED: 502,
   GENERATION_TIMEOUT: 504,
+  /** The user said no to a credit approval or a plan: the tool didn't run. */
+  APPROVAL_DECLINED: 409,
+  /** Nobody answered in time; the run moved on. */
+  WAITPOINT_EXPIRED: 410,
+  /** An answer to a waitpoint that is no longer pending (expired or cancelled). */
+  WAITPOINT_CLOSED: 409,
   STALE: 500,
   INTERNAL: 500,
 } as const satisfies Record<ErrorCode, number>;

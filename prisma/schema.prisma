@@ -45,10 +45,11 @@ model Chat {
   createdAt   DateTime    @default(now()) @map("created_at")
   updatedAt   DateTime    @updatedAt @map("updated_at")
 
-  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages Message[]
-  runs     AgentRun[]
-  assets   Asset[]
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages   Message[]
+  runs       AgentRun[]
+  assets     Asset[]
+  waitpoints Waitpoint[]
 
   /// Target of the (chatId, userId) ownership FKs on messages and runs.
   @@unique([id, userId])
@@ -175,6 +176,7 @@ model AgentRun {
   assistantMessage Message          @relation("RunAssistantMessage", fields: [assistantMessageId], references: [id], onDelete: Cascade)
   messages         Message[]        @relation("RunMessages")
   ledger           CreditLedger[]
+  waitpoints       Waitpoint[]
   toolCalls        ToolInvocation[]
   skills           RunSkill[]
 
@@ -318,4 +320,52 @@ model Asset {
   /// Files modal: a chat's assets, newest first, cursor-paginated.
   @@index([chatId, createdAt, id])
   @@map("assets")
+}
+
+/// What a paused run asks the user (DEC-055, PRD §5.8).
+enum WaitpointType {
+  credit_approval
+  options
+  plan_approval
+
+  @@map("waitpoint_type")
+}
+
+/// pending → answered | expired | cancelled; only pending can change.
+enum WaitpointStatus {
+  pending
+  answered
+  expired
+  cancelled
+
+  @@map("waitpoint_status")
+}
+
+/// A run paused on the user. The run waits on `tokenId` (no compute) until the answer completes it.
+model Waitpoint {
+  id             String          @id @default(cuid())
+  userId         String          @map("user_id")
+  chatId         String          @map("chat_id")
+  runId          String          @map("run_id")
+  toolCallId     String          @map("tool_call_id")
+  type           WaitpointType
+  status         WaitpointStatus @default(pending)
+  /// Zod-validated per type (contracts `WaitpointRequestSchemas`).
+  request        Json
+  response       Json?
+  /// The Trigger.dev waitpoint token the run waits on.
+  tokenId        String          @map("token_id")
+  /// Exactly once: `{runId}:{toolCallId}:{type}`; a retried call reuses its waitpoint.
+  idempotencyKey String          @unique @map("idempotency_key")
+  expiresAt      DateTime        @map("expires_at")
+  answeredAt     DateTime?       @map("answered_at")
+  createdAt      DateTime        @default(now()) @map("created_at")
+
+  /// Ownership FK: the waitpoint's user must own the chat.
+  chat Chat     @relation(fields: [chatId, userId], references: [id, userId], onDelete: Cascade)
+  run  AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  /// A run's pending waitpoint, for reload recovery.
+  @@index([runId, status])
+  @@map("waitpoints")
 }

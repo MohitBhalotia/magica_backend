@@ -52,6 +52,9 @@ export const creditService = {
       return creditRepository.balance(userId, tx);
     }),
 
+  /** A plain read for the worker (the grant already happened when the turn was admitted). */
+  currentBalance: (userId: string) => creditRepository.balance(userId),
+
   /** The /usage page: what each tool was charged, from the user's first credits until now. */
   async usage(userId: string) {
     const [tools, periodStart] = await Promise.all([

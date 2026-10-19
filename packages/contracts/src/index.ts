@@ -8,3 +8,4 @@ export * from "./pagination.ts";
 export * from "./realtime.ts";
 export * from "./run.ts";
 export * from "./tools.ts";
+export * from "./waitpoints.ts";
