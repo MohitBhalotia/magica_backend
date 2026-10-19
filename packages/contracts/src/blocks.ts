@@ -42,5 +42,7 @@ export const MessageMetadataSchema = z.object({
   thinkingMs: z.int().nonnegative().optional(),
   /** How long each finished tool call took, by `toolCallId` (the step row's duration). */
   toolMs: z.record(z.string(), z.int().nonnegative()).optional(),
+  /** What the turn's tools were charged, in microcredits (the turn footer, DESIGN §4.5). */
+  creditsUsedMicro: z.int().nonnegative().optional(),
 });
 export type MessageMetadata = z.infer<typeof MessageMetadataSchema>;

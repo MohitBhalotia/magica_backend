@@ -4,6 +4,8 @@ import { db, type DbClient } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import type { Logger } from "@/lib/logger";
 import { chatRepository } from "@/modules/chats/chat.repository";
+import { creditRepository } from "@/modules/credits/credit.repository";
+import { creditService } from "@/modules/credits/credit.service";
 import { isActive, runRepository, type RunEnd } from "@/modules/runs/run.repository";
 import { runTask } from "@/modules/runs/run.task";
 
@@ -38,12 +40,19 @@ async function dispatch(run: AgentRun, { logger }: Ctx) {
   }
 }
 
+/** A new run holds the admission reserve in the same transaction, so a 402 saves nothing. */
+async function openRun(data: Parameters<typeof runRepository.findOrCreate>[0], tx: DbClient) {
+  const run = await runRepository.findOrCreate(data, tx);
+  await creditService.admit(run, tx);
+  return run;
+}
+
 export const runService = {
   /** Inside the send transaction: the run answering this user message (reused on a replay). */
   open: (
     data: { chatId: string; userId: string; userMessageId: string; traceId: string },
     tx: DbClient,
-  ) => runRepository.findOrCreate({ ...data, dispatchKey: data.userMessageId, attempt: 1 }, tx),
+  ) => openRun({ ...data, dispatchKey: data.userMessageId, attempt: 1 }, tx),
 
   /**
    * Runs a send. If the chat already has an active run, the partial unique index rejects the
@@ -85,7 +94,13 @@ export const runService = {
   async cancel(runId: string, userId: string, { logger }: Ctx) {
     const run = await ownedRun(runId, userId);
     if (!isActive(run.status)) return toHandle(run);
-    if (!run.triggerRunId) return toHandle(await runRepository.cancelUndispatched(run));
+    if (!run.triggerRunId) {
+      const cancelled = await db.$transaction(async (tx) => {
+        await creditService.endAdmission(run.id, tx);
+        return runRepository.cancelUndispatched(run, tx);
+      });
+      return toHandle(cancelled);
+    }
 
     await runRepository.setStatusIfActive(run.id, RunStatus.stopping);
     try {
@@ -110,7 +125,7 @@ export const runService = {
     const attempt = run.attempt + 1;
     const next = await runService.withRunLock(run.chatId, () =>
       db.$transaction((tx) =>
-        runRepository.findOrCreate(
+        openRun(
           {
             chatId: run.chatId,
             userId: run.userId,
@@ -126,11 +141,19 @@ export const runService = {
     return runService.respond(next, ctx);
   },
 
-  /** Worker: the turn's end, its assistant message and the chat's new activity in one transaction. */
+  /**
+   * Worker: in one transaction, the turn's end, its assistant message (with what its tools were
+   * charged), the chat's new activity and the release of the admission reserve.
+   */
   settle: (run: AgentRun, end: RunEnd) =>
     db.$transaction(async (tx) => {
-      const ended = await runRepository.settle(run, end, tx);
-      if (ended) await chatRepository.touch(run.chatId, tx);
+      const charged = await creditRepository.chargedForRun(run.id, tx);
+      const metadata = { ...end.metadata, creditsUsedMicro: Number(charged) };
+      const ended = await runRepository.settle(run, { ...end, metadata }, tx);
+      if (ended) {
+        await chatRepository.touch(run.chatId, tx);
+        await creditService.endAdmission(run.id, tx);
+      }
       return ended;
     }),
 };

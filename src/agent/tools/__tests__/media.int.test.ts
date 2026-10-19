@@ -59,6 +59,10 @@ function magicaCompletes(nodeType: string, output: object, creditUsed: number) {
   const runId = `mr_${randomUUID()}`;
   const posts: unknown[] = [];
   server.use(
+    // Estimated at what the run then costs; the ledger reserves this first.
+    http.post(`${MAGICA}/nodes/estimate-credits`, () =>
+      HttpResponse.json({ estimates: [{ microcredits: creditUsed }] }),
+    ),
     http.post(`${MAGICA}/nodes/${nodeType}/run`, async ({ request }) => {
       posts.push(await request.json());
       return HttpResponse.json({ runId }, { status: 202 });
@@ -71,6 +75,14 @@ function magicaCompletes(nodeType: string, output: object, creditUsed: number) {
 }
 const assets = () =>
   db.asset.findMany({ where: { chatId: ctx.chatId }, orderBy: { createdAt: "asc" } });
+/** The run's tool credit entries as [type, amount], oldest first (the admission reserve aside). */
+const toolLedger = async () =>
+  (
+    await db.creditLedger.findMany({
+      where: { runId: ctx.runId, invocationId: { not: null } },
+      orderBy: { createdAt: "asc" },
+    })
+  ).map((entry) => [entry.type, entry.amountMicro]);
 
 describe("gpt_image_2", () => {
   const output = {
@@ -111,6 +123,16 @@ describe("gpt_image_2", () => {
         sizeBytes: 1409305n,
       },
     ]);
+    // Reserved at the estimate, released, then charged what Magica used.
+    const ledger = await toolLedger();
+    expect(ledger).toHaveLength(3);
+    expect(ledger).toEqual(
+      expect.arrayContaining([
+        ["reserve", -7644n],
+        ["release", 7644n],
+        ["charge", -7644n],
+      ]),
+    );
   });
 
   it("edit mode needs images", async () => {
@@ -195,5 +217,12 @@ describe("merge_videos", () => {
       call("merge_videos", { video_urls: ["https://x.test/1.mp4", "https://x.test/2.mp4"] }),
     ).rejects.toMatchObject({ code: "GENERATION_FAILED" });
     expect(await assets()).toHaveLength(0);
+    // Unfinished work is never charged: the reserve is only released.
+    expect(await toolLedger()).toEqual(
+      expect.arrayContaining([
+        ["reserve", 0n],
+        ["release", 0n],
+      ]),
+    );
   });
 });

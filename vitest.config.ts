@@ -36,9 +36,11 @@ export default defineConfig({
           // Real Postgres on a throwaway Neon branch (see vitest.int.setup.ts).
           globalSetup: ["./vitest.int.setup.ts"],
           setupFiles: ["./vitest.int.env.ts"],
-          testTimeout: 30_000,
+          // Generous: tests run against a remote Neon branch, and a send is several round trips
+          // (slow from a laptop far from the database; CI sits close to it).
+          testTimeout: 60_000,
           // Setup writes to Neon too, and is as slow as the tests when several files run at once.
-          hookTimeout: 30_000,
+          hookTimeout: 60_000,
         },
       },
     ],
