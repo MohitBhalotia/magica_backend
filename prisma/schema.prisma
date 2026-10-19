@@ -100,6 +100,8 @@ model Message {
   status          MessageStatus @default(pending)
   /// Ordered content blocks, validated by the contracts union before every write.
   contentBlocks   Json          @default("[]") @map("content_blocks")
+  /// UIMessage metadata (contracts MessageMetadataSchema), e.g. thinking time.
+  metadata        Json?
   /// Plain text denormalised from contentBlocks, for search and previews.
   text            String        @default("")
   /// Client-generated id: a retried POST returns the same message instead of a duplicate.

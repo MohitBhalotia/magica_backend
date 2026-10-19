@@ -1,6 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 
-import { env } from "@/lib/env";
+import { coreEnv as env } from "@/lib/coreEnv";
 
 import { PrismaClient } from "../../prisma/generated/client";
 

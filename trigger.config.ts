@@ -1,5 +1,11 @@
+import { syncEnvVars } from "@trigger.dev/build/extensions/core";
+import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 import { defineConfig } from "@trigger.dev/sdk";
 import { config } from "dotenv";
+
+// The worker's runtime secrets (workerEnv.ts). On `trigger deploy` they come from the CI step's env
+// (GitHub secrets) and are pushed to the Trigger.dev environment, so nothing is pasted by hand.
+const WORKER_SECRETS = ["DATABASE_URL", "OPENROUTER_API_KEY"] as const;
 
 // Load .env.local for local CLI runs; CI sets real env vars.
 config({ path: ".env.local", quiet: true });
@@ -20,5 +26,18 @@ export default defineConfig({
       factor: 2,
       randomize: true,
     },
+  },
+  build: {
+    extensions: [
+      // Prisma 7 `prisma-client` generator: we run `prisma generate` (postinstall); the extension
+      // keeps @prisma/client external so the generated client and pg adapter bundle cleanly.
+      prismaExtension({ mode: "modern" }),
+      syncEnvVars(() =>
+        WORKER_SECRETS.flatMap((name) => {
+          const value = process.env[name];
+          return value ? [{ name, value, isSecret: true }] : [];
+        }),
+      ),
+    ],
   },
 });

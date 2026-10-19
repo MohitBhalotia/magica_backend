@@ -2,8 +2,12 @@ import { MAX_TITLE_LENGTH } from "@mohitbhalotia/magica-contracts";
 
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
+import type { Logger } from "@/lib/logger";
 import { chatRepository } from "@/modules/chats/chat.repository";
+import { runService } from "@/modules/runs/run.service";
 import { userService } from "@/modules/users/user.service";
+
+type Ctx = { traceId: string; logger: Logger };
 
 const MESSAGES_PER_PAGE = 50;
 /** Auto-titles from the first prompt stay short; renames may use the full MAX_TITLE_LENGTH. */
@@ -17,7 +21,7 @@ async function owned(chatId: string, userId: string) {
   return chat;
 }
 
-const truncateTitle = (text: string, max: number) =>
+export const truncateTitle = (text: string, max: number) =>
   text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
 
 export const chatService = {
@@ -26,23 +30,49 @@ export const chatService = {
 
   async get(chatId: string, userId: string, cursor?: string) {
     const chat = await owned(chatId, userId);
-    return { chat, messages: await chatRepository.messages(chat.id, MESSAGES_PER_PAGE, cursor) };
+    const [messages, activeRun] = await Promise.all([
+      chatRepository.messages(chat.id, MESSAGES_PER_PAGE, cursor),
+      runService.activeHandle(chat.id),
+    ]);
+    return { chat, messages, activeRun };
   },
 
-  async create(userId: string, clientMessageId: string, text: string) {
-    const { chat, message } = await db.$transaction(async (tx) => {
+  /** First message: chat + user message + the run that answers it, in one transaction. */
+  async create(userId: string, clientMessageId: string, text: string, ctx: Ctx) {
+    const run = await db.$transaction(async (tx) => {
       await userService.ensure(userId, tx);
-      const data = {
-        id: clientMessageId,
-        userId,
-        title: truncateTitle(text, PROMPT_TITLE_LENGTH),
-        text,
-      };
-      return chatRepository.createWithMessage(data, tx);
+      const title = truncateTitle(text, PROMPT_TITLE_LENGTH);
+      const { chat, message } = await chatRepository.createWithMessage(
+        { id: clientMessageId, userId, title, text },
+        tx,
+      );
+      // Only on a client-id collision with another user's chat; same 404 as any foreign chat.
+      if (chat.userId !== userId) throw notFound();
+      return runService.open(
+        { chatId: chat.id, userId, userMessageId: message.id, traceId: ctx.traceId },
+        tx,
+      );
     });
-    // Only on a client-id collision with another user's chat; same 404 as any foreign chat.
-    if (chat.userId !== userId) throw notFound();
-    return { chatId: chat.id, userMessageId: message.id };
+    return runService.respond(run, ctx);
+  },
+
+  /** Follow-up message in an existing chat; RUN_ACTIVE while a reply is still in progress. */
+  async send(chatId: string, userId: string, clientMessageId: string, text: string, ctx: Ctx) {
+    const chat = await owned(chatId, userId);
+    const run = await runService.withRunLock(chat.id, () =>
+      db.$transaction(async (tx) => {
+        const message = await chatRepository.upsertUserMessage(
+          { chatId: chat.id, userId, clientMessageId, text },
+          tx,
+        );
+        await chatRepository.touch(chat.id, tx);
+        return runService.open(
+          { chatId: chat.id, userId, userMessageId: message.id, traceId: ctx.traceId },
+          tx,
+        );
+      }),
+    );
+    return runService.respond(run, ctx);
   },
 
   async update(chatId: string, userId: string, patch: { title?: string; isPinned?: boolean }) {

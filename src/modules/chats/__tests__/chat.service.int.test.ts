@@ -1,34 +1,47 @@
 import { randomUUID } from "node:crypto";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { AppError } from "@/lib/errors";
+import { logger } from "@/lib/logger";
 import { chatService, PROMPT_TITLE_LENGTH } from "@/modules/chats/chat.service";
+
+// No real Trigger.dev calls: dispatch returns a fake run id, tokens are fixed.
+vi.mock("@trigger.dev/sdk", () => ({
+  tasks: { trigger: vi.fn((_id: string, p: { runId: string }) => ({ id: `trig_${p.runId}` })) },
+  auth: { createPublicToken: vi.fn(() => "pk_test") },
+  runs: { cancel: vi.fn() },
+}));
 
 // Each test uses fresh user ids, so tests are independent of each other and of copied data.
 const newUser = () => `user_test_${randomUUID()}`;
+const ctx = { traceId: "t", logger };
 const send = (userId: string, text = "Make a logo for my bakery") =>
-  chatService.create(userId, randomUUID(), text);
+  chatService.create(userId, randomUUID(), text, ctx);
 const notFound = expect.objectContaining({ code: "NOT_FOUND" }) as unknown as AppError;
 
 describe("create", () => {
-  it("creates the chat and first message, titled from the prompt", async () => {
+  it("creates the chat, the first message and the reply placeholder, titled from the prompt", async () => {
     const user = newUser();
-    const { chatId } = await send(user, `${"x".repeat(80)} tail`);
-    const { chat, messages } = await chatService.get(chatId, user);
+    const sent = await send(user, `${"x".repeat(80)} tail`);
+    const { chat, messages } = await chatService.get(sent.chatId, user);
     expect(chat).toMatchObject({ titleSource: "prompt" });
     expect(chat.title.length).toBeLessThanOrEqual(PROMPT_TITLE_LENGTH);
-    expect(messages.items).toHaveLength(1);
-    expect(messages.items[0]).toMatchObject({ role: "user", status: "success" });
+    // Newest first: the assistant placeholder, then the user's message.
+    expect(messages.items.map((m) => [m.role, m.status])).toEqual([
+      ["assistant", "streaming"],
+      ["user", "success"],
+    ]);
+    expect(sent.run).toMatchObject({ status: "queued", publicAccessToken: "pk_test" });
   });
 
-  it("is idempotent: retrying the same clientMessageId returns the same rows", async () => {
+  it("is idempotent: retrying the same clientMessageId returns the same rows and run", async () => {
     const user = newUser();
     const clientMessageId = randomUUID();
-    const first = await chatService.create(user, clientMessageId, "hello");
-    const retry = await chatService.create(user, clientMessageId, "hello");
+    const first = await chatService.create(user, clientMessageId, "hello", ctx);
+    const retry = await chatService.create(user, clientMessageId, "hello", ctx);
     expect(retry).toEqual(first);
-    expect((await chatService.get(first.chatId, user)).messages.items).toHaveLength(1);
+    expect((await chatService.get(first.chatId, user)).messages.items).toHaveLength(2);
   });
 });
 
@@ -77,7 +90,7 @@ describe("remove and duplicate", () => {
     await expect(chatService.get(chatId, user)).rejects.toEqual(notFound);
   });
 
-  it("duplicates the chat and its messages in order", async () => {
+  it("duplicates the chat and its settled messages (not a reply still being written)", async () => {
     const user = newUser();
     const { chatId } = await send(user, "first prompt");
     const copy = await chatService.duplicate(chatId, user);

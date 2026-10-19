@@ -13,6 +13,7 @@ export default defineConfig({
       DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy",
       UPSTASH_REDIS_URL: "https://dummy.upstash.io",
       UPSTASH_REDIS_TOKEN: "dummy",
+      TRIGGER_SECRET_KEY: "tr_test_dummy",
       LOG_LEVEL: "silent",
     },
     projects: [

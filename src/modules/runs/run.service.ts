@@ -1,0 +1,136 @@
+import type { RunHandle, SendResponse } from "@mohitbhalotia/magica-contracts";
+
+import { db, type DbClient } from "@/lib/db";
+import { AppError } from "@/lib/errors";
+import type { Logger } from "@/lib/logger";
+import { chatRepository } from "@/modules/chats/chat.repository";
+import { isActive, runRepository, type RunEnd } from "@/modules/runs/run.repository";
+import { runTask } from "@/modules/runs/run.task";
+
+import { Prisma, RunStatus, type AgentRun } from "../../../prisma/generated/client";
+
+type Ctx = { traceId: string; logger: Logger };
+
+const notFound = () => new AppError("NOT_FOUND", "Run not found.");
+
+async function ownedRun(runId: string, userId: string) {
+  const run = await runRepository.findOwned(runId, userId);
+  if (!run) throw notFound();
+  return run;
+}
+
+/** What the browser needs to follow the run live. */
+const toHandle = async (run: AgentRun): Promise<RunHandle> => ({
+  runId: run.id,
+  status: run.status,
+  triggerRunId: run.triggerRunId,
+  publicAccessToken: run.triggerRunId ? await runTask.token(run.triggerRunId) : null,
+});
+
+/** Hands a queued run to Trigger.dev. On failure the run stays queued; a replayed send retries. */
+async function dispatch(run: AgentRun, { logger }: Ctx) {
+  if (run.triggerRunId || !isActive(run.status)) return run;
+  try {
+    return await runRepository.setTriggerRunId(run.id, await runTask.start(run));
+  } catch (err) {
+    logger.error({ err, runId: run.id }, "agent-turn dispatch failed; run left queued");
+    return run;
+  }
+}
+
+export const runService = {
+  /** Inside the send transaction: the run answering this user message (reused on a replay). */
+  open: (
+    data: { chatId: string; userId: string; userMessageId: string; traceId: string },
+    tx: DbClient,
+  ) => runRepository.findOrCreate({ ...data, dispatchKey: data.userMessageId, attempt: 1 }, tx),
+
+  /**
+   * Runs a send. If the chat already has an active run, the partial unique index rejects the
+   * insert (P2002) and the caller gets 409 RUN_ACTIVE instead.
+   */
+  async withRunLock<T>(chatId: string, send: () => Promise<T>): Promise<T> {
+    try {
+      return await send();
+    } catch (err) {
+      const active =
+        err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002"
+          ? await runRepository.findActive(chatId)
+          : null;
+      if (!active) throw err;
+      throw new AppError("RUN_ACTIVE", "A reply is already in progress in this chat.", {
+        activeRunId: active.id,
+      });
+    }
+  },
+
+  /** After commit: dispatch the run and answer the send. */
+  async respond(run: AgentRun, ctx: Ctx): Promise<SendResponse> {
+    const dispatched = await dispatch(run, ctx);
+    return {
+      chatId: dispatched.chatId,
+      userMessageId: dispatched.userMessageId,
+      assistantMessageId: dispatched.assistantMessageId,
+      run: await toHandle(dispatched),
+    };
+  },
+
+  /** The chat's run in progress with a fresh token, so a reload can resume the live stream. */
+  async activeHandle(chatId: string) {
+    const run = await runRepository.findActive(chatId);
+    return run ? toHandle(run) : null;
+  },
+
+  /** Stop. Idempotent: a finished run comes back as is; one never dispatched is cancelled here. */
+  async cancel(runId: string, userId: string, { logger }: Ctx) {
+    const run = await ownedRun(runId, userId);
+    if (!isActive(run.status)) return toHandle(run);
+    if (!run.triggerRunId) return toHandle(await runRepository.cancelUndispatched(run));
+
+    await runRepository.setStatusIfActive(run.id, RunStatus.stopping);
+    try {
+      await runTask.cancel(run.triggerRunId);
+    } catch (err) {
+      logger.warn({ err, runId }, "runs.cancel failed (the run may have just finished)");
+    }
+    return toHandle({ ...run, status: RunStatus.stopping });
+  },
+
+  /** Retry: a new run on the same user message, for the chat's latest reply if it failed or stopped. */
+  async retry(runId: string, userId: string, ctx: Ctx) {
+    const run = await ownedRun(runId, userId);
+    const isLatest = (await runRepository.findLatest(run.chatId))?.id === run.id;
+    const ended = run.status === RunStatus.failed || run.status === RunStatus.cancelled;
+    if (!isLatest || !ended)
+      throw new AppError(
+        "VALIDATION_FAILED",
+        "Only the latest failed or stopped reply can be retried.",
+      );
+
+    const attempt = run.attempt + 1;
+    const next = await runService.withRunLock(run.chatId, () =>
+      db.$transaction((tx) =>
+        runRepository.findOrCreate(
+          {
+            chatId: run.chatId,
+            userId: run.userId,
+            userMessageId: run.userMessageId,
+            dispatchKey: `retry:${run.userMessageId}:${String(attempt)}`,
+            attempt,
+            traceId: ctx.traceId,
+          },
+          tx,
+        ),
+      ),
+    );
+    return runService.respond(next, ctx);
+  },
+
+  /** Worker: the turn's end, its assistant message and the chat's new activity in one transaction. */
+  settle: (run: AgentRun, end: RunEnd) =>
+    db.$transaction(async (tx) => {
+      const ended = await runRepository.settle(run, end, tx);
+      if (ended) await chatRepository.touch(run.chatId, tx);
+      return ended;
+    }),
+};
