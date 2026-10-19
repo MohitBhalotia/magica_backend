@@ -10,6 +10,8 @@ const WEBHOOK_WAIT = "3m";
 const POLL_SECONDS = 30;
 /** Hard cap from the call's start, so a stuck run can't hold the turn forever (DEC-054). */
 const MAX_WAIT_MS = 15 * 60_000;
+/** Tries per Magica request when it's busy or flaky (TESTING §4.2: at most 3). */
+const MAX_TRIES = 3;
 
 /**
  * Runs a Magica model for a media tool call and returns the completed run (DEC-054):
@@ -29,7 +31,12 @@ export async function runMagicaModel(job: MagicaJob, ctx: ToolContext): Promise<
 
   let runId = call.magicaRunId;
   if (!runId) {
-    ({ runId } = await magica.createRun(job, token.url, ctx.signal));
+    // Only a 429 is retried: after a 5xx or a dropped connection the run may exist already.
+    ({ runId } = await retrying(
+      () => magica.createRun(job, token.url, ctx.signal),
+      (err) => err.code === "PROVIDER_RATE_LIMITED",
+      ctx.signal,
+    ));
     await toolRepository.setMagicaRunId(call.id, runId);
   }
 
@@ -38,7 +45,12 @@ export async function runMagicaModel(job: MagicaJob, ctx: ToolContext): Promise<
 
   const deadline = call.startedAt.getTime() + MAX_WAIT_MS;
   for (;;) {
-    const run = await magica.getRun(runId, ctx.signal);
+    // Reading is safe to repeat: a busy or flaky Magica mustn't abandon a run it's still making.
+    const run = await retrying(
+      () => magica.getRun(runId, ctx.signal),
+      (err) => err.retryable,
+      ctx.signal,
+    );
     if (run.status === "COMPLETED") return run;
     if (run.status === "FAILED" || run.status === "CANCELED") {
       const message = run.userMessage ?? "Magica couldn't finish this. Try again.";
@@ -50,6 +62,26 @@ export async function runMagicaModel(job: MagicaJob, ctx: ToolContext): Promise<
       });
     }
     await untilStopped(wait.for({ seconds: POLL_SECONDS }), ctx.signal);
+  }
+}
+
+/**
+ * `attempt`, tried up to 3 times while `retry` accepts its error, waiting Magica's Retry-After
+ * (5s if it gives none, at most 60s) between tries. The waits are durable and cost no compute.
+ */
+async function retrying<T>(
+  attempt: () => Promise<T>,
+  retry: (err: AppError) => boolean,
+  signal?: AbortSignal,
+): Promise<T> {
+  for (let tries = 1; ; tries++) {
+    try {
+      return await attempt();
+    } catch (err) {
+      if (!(err instanceof AppError && retry(err)) || tries >= MAX_TRIES) throw err;
+      const seconds = Math.min(Number(err.details?.retryAfterSeconds) || 5, 60);
+      await untilStopped(wait.for({ seconds }), signal);
+    }
   }
 }
 

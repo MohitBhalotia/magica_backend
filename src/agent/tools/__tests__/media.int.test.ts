@@ -210,6 +210,16 @@ describe("merge_videos", () => {
     expect(await assets()).toMatchObject([{ kind: "video", durationMs: 20022 }]);
   });
 
+  it.each([
+    ["fewer than 2 videos", 1],
+    ["more than 100 videos", 101],
+  ])("refuses %s before calling Magica", async (_case: string, count: number) => {
+    const videos = Array.from({ length: count }, (_, i) => `https://x.test/${String(i)}.mp4`);
+    // No Magica handlers: any request would fail the test (onUnhandledFrame: "error").
+    await expect(call("merge_videos", { video_urls: videos })).rejects.toThrow();
+    expect(await toolLedger()).toEqual([]);
+  });
+
   it("an unreadable result is GENERATION_FAILED, with no assets saved", async () => {
     magicaCompletes("merge_videos", { unexpected: true }, 0);
 

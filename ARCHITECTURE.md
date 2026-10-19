@@ -399,12 +399,12 @@ The first three are configuration and plan changes only. No code changes.
 |---|---|---|
 | API crashes after commit, before trigger | Run `queued` with no `triggerRunId` > 30 s | Re-dispatch cron (same idempotency key) |
 | Worker crash mid-turn | Trigger.dev retry | Replay: skip persisted blocks and completed invocations; recover the partial text from the stream |
-| Duplicate send (double click, retry) | Unique `clientMessageId` | Return the existing run |
+| Duplicate send (double click, retry, two at once) | Unique `clientMessageId`; the loser of a concurrent first send gets P2002 | Return the existing run (the loser replays its transaction once and finds it) |
 | Concurrent send on the same chat | Partial unique index | `409 RUN_ACTIVE` plus the active run ID; the UI attaches to it |
 | Magica webhook lost | `wait.forToken` timeout | Reconcile GET; hard cap → `GENERATION_TIMEOUT` |
-| Magica webhook duplicated | `svix-id` dedupe | No-op |
-| Late Magica result after cancel | Invocation `cancelled` | Ignore the output; **still settle the actual charge** (truthful ledger) |
-| User clicks Stop | `POST /runs/:id/cancel` → status `stopping` + `runs.cancel` | Abort signal → partial output kept → `cancelled`; only completed work is charged |
+| Magica webhook duplicated | The webhook is the Trigger.dev token URL, which completes once (no `svix-id` dedupe needed) | No-op; the result is always re-read with our key (`GET /nodes/runs/:id`), never taken from the webhook body (DEC-057) |
+| Late Magica result after cancel | Invocation `cancelled` | Ignore the output |
+| User clicks Stop | `POST /runs/:id/cancel` → status `stopping` + `runs.cancel` | Abort signal → partial output kept → `cancelled`; only completed work is charged. **Known limit (DEC-057):** a Magica generation in flight is released at 0 credits although Magica may still bill the shared account |
 | Waitpoint unanswered | Token timeout | `expired`; the agent explains how to continue; the UI clears the overlay from server state |
 | Mid-turn credit exhaustion | Reserve fails | Stop billable tools, settle completed ones, finish with a notice |
 | Realtime outage | Client backoff | Token refresh, then REST polling; the database is authoritative |

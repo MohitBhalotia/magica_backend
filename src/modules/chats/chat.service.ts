@@ -9,6 +9,8 @@ import { runTask } from "@/modules/runs/run.task";
 import { uploadService } from "@/modules/uploads/upload.service";
 import { userService } from "@/modules/users/user.service";
 
+import { Prisma } from "../../../prisma/generated/client";
+
 type Ctx = { traceId: string; logger: Logger };
 
 const MESSAGES_PER_PAGE = 50;
@@ -52,20 +54,28 @@ export const chatService = {
     ctx: Ctx,
     attachmentIds: string[] = [],
   ) {
-    const run = await db.$transaction(async (tx) => {
-      await userService.ensure(userId, tx);
-      const title = truncateTitle(text, PROMPT_TITLE_LENGTH);
-      const { chat, message } = await chatRepository.createWithMessage(
-        { id: clientMessageId, userId, title, text },
-        tx,
-      );
-      // Only on a client-id collision with another user's chat; same 404 as any foreign chat.
-      if (chat.userId !== userId) throw notFound();
-      await uploadService.attach(userId, message.id, attachmentIds, tx);
-      return runService.open(
-        { chatId: chat.id, userId, userMessageId: message.id, traceId: ctx.traceId },
-        tx,
-      );
+    const open = () =>
+      db.$transaction(async (tx) => {
+        await userService.ensure(userId, tx);
+        const title = truncateTitle(text, PROMPT_TITLE_LENGTH);
+        const { chat, message } = await chatRepository.createWithMessage(
+          { id: clientMessageId, userId, title, text },
+          tx,
+        );
+        // Only on a client-id collision with another user's chat; same 404 as any foreign chat.
+        if (chat.userId !== userId) throw notFound();
+        await uploadService.attach(userId, message.id, attachmentIds, tx);
+        return runService.open(
+          { chatId: chat.id, userId, userMessageId: message.id, traceId: ctx.traceId },
+          tx,
+        );
+      });
+    // A concurrent send with the same id won an insert (P2002 aborts this transaction, and is only
+    // raised once the winner committed): replaying it finds the winner's chat, message and run.
+    const run = await open().catch((err: unknown) => {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002")
+        return open();
+      throw err;
     });
     // The AI title runs alongside the reply; if it can't start, the prompt title stays.
     const [sent] = await Promise.all([
