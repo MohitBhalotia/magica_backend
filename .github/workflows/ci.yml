@@ -26,6 +26,13 @@ jobs:
       UPSTASH_REDIS_TOKEN: ci
       TRIGGER_SECRET_KEY: tr_ci
       TRIGGER_PROJECT_REF: proj_ci
+      TRANSLOADIT_KEY: ci
+      TRANSLOADIT_SECRET: ci
+      # Quoted: unquoted, YAML reads this as the number 0.
+      R2_ACCOUNT_ID: "00000000000000000000000000000000"
+      R2_BUCKET: ci-bucket
+      R2_ACCESS_KEY_ID: ci
+      R2_SECRET_ACCESS_KEY: ci
     steps:
       - uses: actions/checkout@v7
         with:
@@ -88,6 +95,10 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           MAGICA_API_KEY: ${{ secrets.MAGICA_API_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       - name: Deploy API to Vercel (env vars come from the Vercel project)
         run: |
           pnpm dlx vercel@64.5.0 pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}

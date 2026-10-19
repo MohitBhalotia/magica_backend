@@ -21,6 +21,7 @@ export const ErrorCodeSchema = z.enum([
   "APPROVAL_DECLINED",
   "WAITPOINT_EXPIRED",
   "WAITPOINT_CLOSED",
+  "UPLOAD_QUOTA_EXCEEDED",
   "STALE",
   "INTERNAL",
 ]);
@@ -50,6 +51,8 @@ export const errorStatus = {
   WAITPOINT_EXPIRED: 410,
   /** An answer to a waitpoint that is no longer pending (expired or cancelled). */
   WAITPOINT_CLOSED: 409,
+  /** The month's 5 GB upload allowance (Transloadit Community) is used up. */
+  UPLOAD_QUOTA_EXCEEDED: 403,
   STALE: 500,
   INTERNAL: 500,
 } as const satisfies Record<ErrorCode, number>;

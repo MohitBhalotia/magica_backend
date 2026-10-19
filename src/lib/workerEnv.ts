@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { CoreEnvSchema } from "@/lib/coreEnv";
+import { R2EnvSchema } from "@/providers/r2";
 
 /** Trigger.dev worker env: the only place the OpenRouter and Magica keys are read. */
 export const WorkerEnvSchema = CoreEnvSchema.extend({
@@ -10,6 +11,8 @@ export const WorkerEnvSchema = CoreEnvSchema.extend({
   OPENROUTER_API_KEY: z.string().trim().min(1),
   MAGICA_API_KEY: z.string().trim().min(1),
   MAGICA_BASE_URL: z.url().default("https://inference.magica.com/v1"),
+  // Signs links to the user's uploads so the agent (and Magica) can read them.
+  ...R2EnvSchema.shape,
 });
 
 export type WorkerEnv = z.infer<typeof WorkerEnvSchema>;

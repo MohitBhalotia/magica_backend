@@ -208,8 +208,8 @@ describe("worker", () => {
     });
     expect(await runRepository.begin(sent.run.runId)).toBeNull();
     expect(await chatRepository.history(sent.chatId, 20)).toEqual([
-      { role: "user", text: "hello" },
-      { role: "assistant", text: "Hi there" },
+      { role: "user", text: "hello", attachments: [] },
+      { role: "assistant", text: "Hi there", attachments: [] },
     ]);
     await expect(followUp(sent.chatId, user)).resolves.toBeDefined();
   });

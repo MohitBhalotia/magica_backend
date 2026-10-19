@@ -4,8 +4,17 @@ import { EnvSchema } from "@/lib/env";
 import { WorkerEnvSchema } from "@/lib/workerEnv";
 
 const db = { DATABASE_URL: "postgresql://u:p@localhost:5432/db" };
+const r2 = {
+  R2_ACCOUNT_ID: "0123456789abcdef0123456789abcdef",
+  R2_BUCKET: "bucket",
+  R2_ACCESS_KEY_ID: "k",
+  R2_SECRET_ACCESS_KEY: "s",
+};
 const api = {
   ...db,
+  ...r2,
+  TRANSLOADIT_KEY: "tk",
+  TRANSLOADIT_SECRET: "ts",
   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_test_x",
   CLERK_SECRET_KEY: "sk_test_x",
   FRONTEND_ORIGINS: "http://localhost:3000",
@@ -13,7 +22,7 @@ const api = {
   UPSTASH_REDIS_TOKEN: "t",
   TRIGGER_SECRET_KEY: "tr_test_x",
 };
-const worker = { ...db, OPENROUTER_API_KEY: "sk-or-x", MAGICA_API_KEY: "gx_x" };
+const worker = { ...db, ...r2, OPENROUTER_API_KEY: "sk-or-x", MAGICA_API_KEY: "gx_x" };
 // Built explicitly: a literal U+FEFF in source is invisible.
 const BOM = String.fromCharCode(0xfeff);
 

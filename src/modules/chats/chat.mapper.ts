@@ -47,6 +47,8 @@ export const toMessage = (m: Db.Message): Message => ({
   createdAt: m.createdAt.toISOString(),
   completedAt: m.completedAt?.toISOString() ?? null,
   runId: m.runId,
+  // Signing their links is async: the chat controller fills these in.
+  attachments: [],
 });
 
 const SNIPPET_RADIUS = 60;

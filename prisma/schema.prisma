@@ -20,6 +20,7 @@ model User {
   creditAccount CreditAccount?
   chats         Chat[]
   ledger        CreditLedger[]
+  attachments   Attachment[]
 
   @@map("users")
 }
@@ -125,6 +126,7 @@ model Message {
   assistantRuns AgentRun[]       @relation("RunAssistantMessage")
   toolCalls     ToolInvocation[]
   assets        Asset[]
+  attachments   Attachment[]
 
   @@unique([chatId, clientMessageId])
   /// History: newest first, `before` cursor for older pages.
@@ -368,4 +370,60 @@ model Waitpoint {
   /// A run's pending waitpoint, for reload recovery.
   @@index([runId, status])
   @@map("waitpoints")
+}
+
+/// What a user may upload (PRD §5.10): Transloadit filters everything else out.
+enum AttachmentKind {
+  image
+  video
+  audio
+
+  @@map("attachment_kind")
+}
+
+/// uploading → ready | failed, settled by the Transloadit webhook (or the confirm call).
+enum AttachmentStatus {
+  uploading
+  ready
+  failed
+
+  @@map("attachment_status")
+}
+
+/// A file the user uploaded (Uppy → Transloadit → private R2 bucket), attached to a message on send.
+model Attachment {
+  id           String           @id @default(cuid())
+  userId       String           @map("user_id")
+  /// The browser's id for the file: a retried request reuses the row (unique per user).
+  clientFileId String           @map("client_file_id")
+  /// Set when the message it was sent with is created.
+  messageId    String?          @map("message_id")
+  /// Position among the message's attachments (the order the user chose).
+  orderIndex   Int              @default(0) @map("order_index")
+  name         String
+  kind         AttachmentKind
+  mimeType     String           @map("mime_type")
+  sizeBytes    BigInt           @map("size_bytes")
+  status       AttachmentStatus @default(uploading)
+  /// Transloadit's id for the upload job; the webhook finds the rows by it.
+  assemblyId   String?          @map("assembly_id")
+  /// Object key in the private R2 bucket; read through short-lived signed URLs.
+  r2Key        String?          @map("r2_key")
+  width        Int?
+  height       Int?
+  durationMs   Int?             @map("duration_ms")
+  /// A user-safe reason when the upload failed.
+  error        String?
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, clientFileId])
+  /// The "Select Asset" library: a user's uploads, newest first, cursor-paginated.
+  @@index([userId, createdAt, id])
+  @@index([assemblyId])
+  @@index([messageId])
+  @@map("attachments")
 }
