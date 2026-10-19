@@ -166,6 +166,12 @@ export const runService = {
     return { redispatched: queued.length, settled };
   },
 
+  /**
+   * One of the user's runs, for the browser's fallback when Realtime is down, and to renew its
+   * one-hour read token. Owner only (404 otherwise).
+   */
+  get: async (runId: string, userId: string) => toHandle(await ownedRun(runId, userId)),
+
   /** Stop. Idempotent: a finished run comes back as is; one never dispatched is cancelled here. */
   async cancel(runId: string, userId: string, { logger }: Ctx) {
     const run = await ownedRun(runId, userId);
