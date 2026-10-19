@@ -1,4 +1,4 @@
-import { MAX_TITLE_LENGTH, type SendResponse } from "@mohitbhalotia/magica-contracts";
+import { MAX_TITLE_LENGTH } from "@mohitbhalotia/magica-contracts";
 
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
@@ -38,65 +38,41 @@ export const chatService = {
   },
 
   /** First message: chat + user message + the run that answers it, in one transaction. */
-  async create(
-    userId: string,
-    clientMessageId: string,
-    text: string,
-    ctx: Ctx,
-  ): Promise<SendResponse> {
-    const { chat, message, run } = await db.$transaction(async (tx) => {
+  async create(userId: string, clientMessageId: string, text: string, ctx: Ctx) {
+    const run = await db.$transaction(async (tx) => {
       await userService.ensure(userId, tx);
-      const data = {
-        id: clientMessageId,
-        userId,
-        title: truncateTitle(text, PROMPT_TITLE_LENGTH),
-        text,
-      };
-      const created = await chatRepository.createWithMessage(data, tx);
-      // Only on a client-id collision with another user's chat; same 404 as any foreign chat.
-      if (created.chat.userId !== userId) throw notFound();
-      const opened = await runService.open(
-        {
-          chatId: created.chat.id,
-          userId,
-          userMessageId: created.message.id,
-          traceId: ctx.traceId,
-        },
+      const title = truncateTitle(text, PROMPT_TITLE_LENGTH);
+      const { chat, message } = await chatRepository.createWithMessage(
+        { id: clientMessageId, userId, title, text },
         tx,
       );
-      return { ...created, run: opened };
+      // Only on a client-id collision with another user's chat; same 404 as any foreign chat.
+      if (chat.userId !== userId) throw notFound();
+      return runService.open(
+        { chatId: chat.id, userId, userMessageId: message.id, traceId: ctx.traceId },
+        tx,
+      );
     });
-    return {
-      chatId: chat.id,
-      userMessageId: message.id,
-      assistantMessageId: run.assistantMessageId,
-      run: await runService.dispatch(run, ctx),
-    };
+    return runService.respond(run, ctx);
   },
 
   /** Follow-up message in an existing chat; RUN_ACTIVE while a reply is still in progress. */
   async send(chatId: string, userId: string, clientMessageId: string, text: string, ctx: Ctx) {
     const chat = await owned(chatId, userId);
-    const { message, run } = await runService.withRunLock(chat.id, () =>
+    const run = await runService.withRunLock(chat.id, () =>
       db.$transaction(async (tx) => {
-        const msg = await chatRepository.upsertUserMessage(
+        const message = await chatRepository.upsertUserMessage(
           { chatId: chat.id, userId, clientMessageId, text },
           tx,
         );
         await chatRepository.touch(chat.id, tx);
-        const opened = await runService.open(
-          { chatId: chat.id, userId, userMessageId: msg.id, traceId: ctx.traceId },
+        return runService.open(
+          { chatId: chat.id, userId, userMessageId: message.id, traceId: ctx.traceId },
           tx,
         );
-        return { message: msg, run: opened };
       }),
     );
-    return {
-      chatId: chat.id,
-      userMessageId: message.id,
-      assistantMessageId: run.assistantMessageId,
-      run: await runService.dispatch(run, ctx),
-    } satisfies SendResponse;
+    return runService.respond(run, ctx);
   },
 
   async update(chatId: string, userId: string, patch: { title?: string; isPinned?: boolean }) {

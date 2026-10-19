@@ -15,9 +15,27 @@ const ACTIVE: RunStatus[] = [
   RunStatus.stopping,
 ];
 
+type NewRun = {
+  chatId: string;
+  userId: string;
+  userMessageId: string;
+  /** Unique per send attempt: the user message id, or `retry:<messageId>:<attempt>`. */
+  dispatchKey: string;
+  attempt: number;
+  traceId: string;
+};
+
 export const runRepository = {
   findByDispatchKey: (dispatchKey: string, db: DbClient = prisma) =>
     db.agentRun.findUnique({ where: { dispatchKey } }),
+
+  /** Idempotent open: the run already created for this dispatch key, or a new one. */
+  async findOrCreate(data: NewRun, db: DbClient = prisma) {
+    return (
+      (await runRepository.findByDispatchKey(data.dispatchKey, db)) ??
+      runRepository.create(data, db)
+    );
+  },
 
   /** The chat's run in progress, if any (at most one: partial unique index). */
   findActive: (chatId: string, db: DbClient = prisma) =>
@@ -35,17 +53,7 @@ export const runRepository = {
    * The assistant placeholder message (`streaming`) and the queued run that will fill it. A second
    * active run on the chat violates `agent_runs_one_active_per_chat` (P2002) — the RUN_ACTIVE lock.
    */
-  async create(
-    data: {
-      chatId: string;
-      userId: string;
-      userMessageId: string;
-      dispatchKey: string;
-      attempt: number;
-      traceId: string;
-    },
-    db: DbClient = prisma,
-  ) {
+  async create(data: NewRun, db: DbClient = prisma) {
     const assistant = await db.message.create({
       data: {
         chatId: data.chatId,
