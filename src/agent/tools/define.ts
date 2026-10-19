@@ -6,6 +6,7 @@ import { TOOLS, type ToolName } from "@mohitbhalotia/magica-contracts";
 import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { toolRepository } from "@/modules/tools/tool.repository";
+import { withoutSignatures } from "@/providers/r2";
 
 import type { Prisma } from "../../../prisma/generated/client";
 
@@ -92,7 +93,10 @@ async function runToolCall<I, O>(
     toolName: def.name,
     kind: TOOLS[def.name],
     ordinal: turn.calls++,
-    inputSanitized: (def.sanitize ? def.sanitize(input) : input) as Prisma.InputJsonValue,
+    // The tool itself still gets the signed links; only the stored copy loses them.
+    inputSanitized: withoutSignatures(
+      def.sanitize ? def.sanitize(input) : input,
+    ) as Prisma.InputJsonValue,
   });
 
   if (call.state === "succeeded") return def.output.parse(call.output);

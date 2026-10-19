@@ -22,6 +22,7 @@ import {
 } from "@mohitbhalotia/magica-contracts";
 
 import { AppError } from "@/lib/errors";
+import { withoutSignatures } from "@/providers/r2";
 
 export const SYSTEM_PROMPT =
   "You are Magica, a helpful AI assistant. Answer clearly and concisely, using Markdown when it helps.";
@@ -148,10 +149,13 @@ export function streamTurn(input: {
 /** The saved form of a streamed message: known parts only, plain text, validated metadata. */
 export function toStored(message?: AgentMessage) {
   // Parts we don't render yet (e.g. sources) are dropped rather than failing the save.
-  const blocks = (message?.parts ?? []).flatMap((part) => {
-    const block = ContentBlockSchema.safeParse(part);
-    return block.success ? [block.data] : [];
-  });
+  // Tool inputs carry signed attachment links; the saved copy keeps only their paths.
+  const blocks = withoutSignatures(
+    (message?.parts ?? []).flatMap((part) => {
+      const block = ContentBlockSchema.safeParse(part);
+      return block.success ? [block.data] : [];
+    }),
+  );
   return {
     blocks,
     // Models often open with blank lines; the plain text feeds previews, search and copy.
