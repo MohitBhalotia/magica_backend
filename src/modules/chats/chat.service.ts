@@ -6,6 +6,7 @@ import type { Logger } from "@/lib/logger";
 import { chatRepository } from "@/modules/chats/chat.repository";
 import { runService } from "@/modules/runs/run.service";
 import { runTask } from "@/modules/runs/run.task";
+import { uploadService } from "@/modules/uploads/upload.service";
 import { userService } from "@/modules/users/user.service";
 
 type Ctx = { traceId: string; logger: Logger };
@@ -44,7 +45,13 @@ export const chatService = {
   },
 
   /** First message: chat + user message + the run that answers it, in one transaction. */
-  async create(userId: string, clientMessageId: string, text: string, ctx: Ctx) {
+  async create(
+    userId: string,
+    clientMessageId: string,
+    text: string,
+    ctx: Ctx,
+    attachmentIds: string[] = [],
+  ) {
     const run = await db.$transaction(async (tx) => {
       await userService.ensure(userId, tx);
       const title = truncateTitle(text, PROMPT_TITLE_LENGTH);
@@ -54,6 +61,7 @@ export const chatService = {
       );
       // Only on a client-id collision with another user's chat; same 404 as any foreign chat.
       if (chat.userId !== userId) throw notFound();
+      await uploadService.attach(userId, message.id, attachmentIds, tx);
       return runService.open(
         { chatId: chat.id, userId, userMessageId: message.id, traceId: ctx.traceId },
         tx,
@@ -73,7 +81,14 @@ export const chatService = {
   },
 
   /** Follow-up message in an existing chat; RUN_ACTIVE while a reply is still in progress. */
-  async send(chatId: string, userId: string, clientMessageId: string, text: string, ctx: Ctx) {
+  async send(
+    chatId: string,
+    userId: string,
+    clientMessageId: string,
+    text: string,
+    ctx: Ctx,
+    attachmentIds: string[] = [],
+  ) {
     const chat = await owned(chatId, userId);
     const run = await runService.withRunLock(chat.id, () =>
       db.$transaction(async (tx) => {
@@ -81,6 +96,7 @@ export const chatService = {
           { chatId: chat.id, userId, clientMessageId, text },
           tx,
         );
+        await uploadService.attach(userId, message.id, attachmentIds, tx);
         await chatRepository.touch(chat.id, tx);
         return runService.open(
           { chatId: chat.id, userId, userMessageId: message.id, traceId: ctx.traceId },

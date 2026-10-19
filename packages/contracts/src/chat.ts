@@ -4,6 +4,7 @@ import { ContentBlocksSchema, MessageMetadataSchema } from "./blocks.ts";
 import { ErrorCodeSchema } from "./errors.ts";
 import { pageSchema, PageQuerySchema } from "./pagination.ts";
 import { RunHandleSchema } from "./run.ts";
+import { AttachmentSchema, MAX_ATTACHMENTS } from "./uploads.ts";
 
 export const MAX_TITLE_LENGTH = 200;
 export const MAX_MESSAGE_LENGTH = 10_000;
@@ -53,6 +54,8 @@ export const MessageSchema = z.object({
   completedAt: z.iso.datetime().nullable(),
   /** The run that wrote this reply (assistant), e.g. to retry it; null on user messages. */
   runId: z.string().nullable(),
+  /** Files sent with a user message, in the order the user chose. */
+  attachments: z.array(AttachmentSchema).default([]),
 });
 export type Message = z.infer<typeof MessageSchema>;
 
@@ -73,6 +76,8 @@ export type ChatDetail = z.infer<typeof ChatDetailSchema>;
 export const SendMessageRequestSchema = z.object({
   clientMessageId: z.uuid(),
   text: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH),
+  /** Ready uploads to send with the message, in order (PRD §5.10). */
+  attachmentIds: z.array(z.string().min(1)).max(MAX_ATTACHMENTS).default([]),
 });
 export type SendMessageRequest = z.infer<typeof SendMessageRequestSchema>;
 

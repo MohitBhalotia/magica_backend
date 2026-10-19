@@ -14,11 +14,31 @@ import { chatRepository } from "@/modules/chats/chat.repository";
 import { runRepository } from "@/modules/runs/run.repository";
 import { runService } from "@/modules/runs/run.service";
 import { openRouterFree } from "@/providers/openrouter";
+import { signedUrl } from "@/providers/r2";
 
 /** Messages the model sees; a rolling summary of older ones comes later (M3+). */
 const HISTORY_LIMIT = 20;
 
 const uiStream = streams.define<UIMessageChunk>({ id: UI_STREAM });
+
+/**
+ * The files a user sent, in their order, with fresh signed links the agent can pass to the media
+ * tools (crop `image_url`, edit `uploadedImages`, merge `video_urls`). Empty when there are none.
+ */
+async function attachedFiles(files: { name: string; kind: string; r2Key: string | null }[]) {
+  const lines = await Promise.all(
+    files.flatMap((file, i) =>
+      file.r2Key
+        ? [
+            signedUrl(file.r2Key, file.name).then(
+              (url) => `${String(i + 1)}. ${file.name} (${file.kind}): ${url}`,
+            ),
+          ]
+        : [],
+    ),
+  );
+  return lines.length ? `\n\nAttached files, in order:\n${lines.join("\n")}` : "";
+}
 
 /** One durable agent turn: streams the answer to the browser, then settles it in Postgres. */
 export const agentTurn = schemaTask({
@@ -37,10 +57,12 @@ export const agentTurn = schemaTask({
     if (!run) return { status: "skipped" };
 
     const history = await chatRepository.history(run.chatId, HISTORY_LIMIT);
-    const messages = history.map((m) => ({
-      role: m.role === "user" ? ("user" as const) : ("assistant" as const),
-      content: m.text,
-    }));
+    const messages = await Promise.all(
+      history.map(async (m) => ({
+        role: m.role === "user" ? ("user" as const) : ("assistant" as const),
+        content: m.text + (await attachedFiles(m.attachments)),
+      })),
+    );
     const tools = buildTools(AGENT_TOOLS, {
       runId: run.id,
       chatId: run.chatId,

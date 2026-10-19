@@ -17,6 +17,7 @@ import { enforceRateLimit } from "@/lib/rateLimiter";
 import { withHandler } from "@/lib/withHandler";
 import { toChatAsset, toChatSummary, toMessage, toSearchResult } from "@/modules/chats/chat.mapper";
 import { chatService } from "@/modules/chats/chat.service";
+import { toAttachment } from "@/modules/uploads/upload.service";
 
 type ChatParams = { chatId: string };
 const query = (req: Request) => Object.fromEntries(new URL(req.url).searchParams);
@@ -30,8 +31,9 @@ export const listChats = withHandler(async (req, { userId }) => {
 /** First message: creates the chat and starts the reply. */
 export const createChat = withHandler(async (req, { userId, traceId, logger }) => {
   await enforceRateLimit("send", userId);
-  const { clientMessageId, text } = SendMessageRequestSchema.parse(await req.json());
-  const sent = await chatService.create(userId, clientMessageId, text, { traceId, logger });
+  const { clientMessageId, text, attachmentIds } = SendMessageRequestSchema.parse(await req.json());
+  const ctx = { traceId, logger };
+  const sent = await chatService.create(userId, clientMessageId, text, ctx, attachmentIds);
   return NextResponse.json<SendResponse>(sent, { status: 201 });
 });
 
@@ -39,9 +41,12 @@ export const createChat = withHandler(async (req, { userId, traceId, logger }) =
 export const sendMessage = withHandler<ChatParams>(
   async (req, { userId, params, traceId, logger }) => {
     await enforceRateLimit("send", userId);
-    const { clientMessageId, text } = SendMessageRequestSchema.parse(await req.json());
+    const { clientMessageId, text, attachmentIds } = SendMessageRequestSchema.parse(
+      await req.json(),
+    );
     const { chatId } = await params;
-    const sent = await chatService.send(chatId, userId, clientMessageId, text, { traceId, logger });
+    const ctx = { traceId, logger };
+    const sent = await chatService.send(chatId, userId, clientMessageId, text, ctx, attachmentIds);
     return NextResponse.json<SendResponse>(sent, { status: 201 });
   },
 );
@@ -66,9 +71,16 @@ export const getChat = withHandler<ChatParams>(async (req, { userId, params }) =
     userId,
     cursor,
   );
+  // Attachments get fresh signed links (the bucket is private).
+  const items = await Promise.all(
+    messages.items.map(async (m) => ({
+      ...toMessage(m),
+      attachments: await Promise.all(m.attachments.map(toAttachment)),
+    })),
+  );
   return NextResponse.json<ChatDetail>({
     ...toChatSummary(chat),
-    messages: { ...messages, items: messages.items.map(toMessage) },
+    messages: { ...messages, items },
     activeRun,
   });
 });

@@ -47,6 +47,7 @@ export const chatRepository = {
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: limit + 1,
       ...after(cursor),
+      include: { attachments: { orderBy: { orderIndex: "asc" } } },
     });
     return page(rows, limit);
   },
@@ -100,7 +101,14 @@ export const chatRepository = {
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: limit,
-      select: { role: true, text: true },
+      select: {
+        role: true,
+        text: true,
+        attachments: {
+          orderBy: { orderIndex: "asc" },
+          select: { name: true, kind: true, r2Key: true },
+        },
+      },
     });
     return rows.reverse();
   },
