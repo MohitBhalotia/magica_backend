@@ -1,4 +1,9 @@
-import { APICallError, simulateReadableStream, type UIMessageChunk } from "ai";
+import {
+  APICallError,
+  InvalidToolInputError,
+  simulateReadableStream,
+  type UIMessageChunk,
+} from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it, vi } from "vitest";
 
@@ -132,6 +137,18 @@ describe("toTurnError", () => {
 
     const empty = new AppError("EMPTY_RESPONSE", "Empty.");
     expect(toTurnError(empty)).toBe(empty);
+  });
+
+  it("an invalid tool input is INVALID_TOOL_INPUT with a plain message", () => {
+    const err = new InvalidToolInputError({
+      toolName: "crop_image",
+      toolInput: '{"image_url":"http://example.com/a.png"}',
+      cause: new Error("Invalid URL"),
+    });
+    expect(toTurnError(err)).toMatchObject({
+      code: "INVALID_TOOL_INPUT",
+      message: "The tool input wasn't valid, so it didn't run.",
+    });
   });
 
   it("maps credits and server errors to safe provider codes", () => {
