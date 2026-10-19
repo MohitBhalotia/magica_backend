@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import type { Tool, ToolExecutionOptions } from "ai";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { http, HttpResponse } from "msw";
+import { setupServer } from "msw/node";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AGENT_TOOLS } from "@/agent/tools";
 import { buildTools, type TurnContext } from "@/agent/tools/define";
@@ -16,6 +18,19 @@ vi.mock("@trigger.dev/sdk", () => ({
   auth: { createPublicToken: vi.fn(() => "pk_test") },
   runs: { cancel: vi.fn() },
 }));
+
+// Magica is served by MSW (vitest.config.ts points MAGICA_BASE_URL here); Postgres is real.
+const MAGICA = "https://magica.test/v1";
+const server = setupServer();
+beforeAll(() => {
+  server.listen({ onUnhandledFrame: "error" });
+});
+afterEach(() => {
+  server.resetHandlers();
+});
+afterAll(() => {
+  server.close();
+});
 
 let ctx: TurnContext;
 beforeEach(async () => {
@@ -90,5 +105,63 @@ describe("read_skill_asset", () => {
         text: expect.stringContaining("name: crop-image") as unknown,
       },
     );
+  });
+});
+
+describe("search_models", () => {
+  it("lists models with the runnable ones first, and drops Magica's MCP playbook text", async () => {
+    server.use(
+      http.get(`${MAGICA}/models/search`, () =>
+        HttpResponse.json({
+          modelCatalog: {
+            image: [{ modelId: "flux_pro", name: "Flux Pro", category: "image" }],
+            utility: [{ modelId: "crop_image", name: "Crop image", category: "utility" }],
+          },
+          categoryRoles: { utility: "UTILITY — process existing media" },
+          usage: "EXTERNAL MCP PLAYBOOK RULE: call load_magica_skills…",
+        }),
+      ),
+    );
+
+    const result = await call("search_models", { query: "crop image" });
+
+    expect(result).toMatchObject({
+      models: [
+        { modelId: "crop_image", runnable: true, tool: "crop_image" },
+        { modelId: "flux_pro", runnable: false },
+      ],
+      categoryRoles: { utility: "UTILITY — process existing media" },
+    });
+    expect(JSON.stringify(result)).not.toContain("PLAYBOOK");
+    expect(await rows()).toMatchObject([{ toolName: "search_models", kind: "discovery" }]);
+  });
+});
+
+describe("get_model_schema", () => {
+  it("returns Magica's schema as is", async () => {
+    const schema = {
+      modelId: "merge_videos",
+      name: "Merge Videos",
+      category: "utility",
+      fields: [{ name: "video_urls", type: "videos", required: true }],
+      defaults: { transition: "none" },
+      capabilities: {},
+    };
+    server.use(http.get(`${MAGICA}/models/merge_videos/schema`, () => HttpResponse.json(schema)));
+
+    expect(await call("get_model_schema", { modelId: "merge_videos" })).toEqual(schema);
+  });
+
+  it("an unknown model is a safe tool error", async () => {
+    server.use(
+      http.get(`${MAGICA}/models/nope/schema`, () =>
+        HttpResponse.json({ error: "not_found", message: "Unknown model ID" }, { status: 404 }),
+      ),
+    );
+
+    await expect(call("get_model_schema", { modelId: "nope" })).rejects.toMatchObject({
+      code: "MODEL_UNAVAILABLE",
+    });
+    expect(await rows()).toMatchObject([{ state: "failed", errorCode: "MODEL_UNAVAILABLE" }]);
   });
 });

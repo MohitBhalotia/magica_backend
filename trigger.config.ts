@@ -5,7 +5,7 @@ import { config } from "dotenv";
 
 // The worker's runtime secrets (workerEnv.ts). On `trigger deploy` they come from the CI step's env
 // (GitHub secrets) and are pushed to the Trigger.dev environment, so nothing is pasted by hand.
-const WORKER_SECRETS = ["DATABASE_URL", "OPENROUTER_API_KEY"] as const;
+const WORKER_SECRETS = ["DATABASE_URL", "OPENROUTER_API_KEY", "MAGICA_API_KEY"] as const;
 
 // Load .env.local for local CLI runs; CI sets real env vars.
 config({ path: ".env.local", quiet: true });
