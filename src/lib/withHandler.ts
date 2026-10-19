@@ -5,7 +5,7 @@ import { ZodError } from "zod";
 
 import { errorStatus, type ErrorEnvelope } from "@mohitbhalotia/magica-contracts";
 
-import { requireUserId } from "@/lib/auth";
+import { requireSessionUserId, requireUserId } from "@/lib/auth";
 import { AppError } from "@/lib/errors";
 import { logger, type Logger } from "@/lib/logger";
 
@@ -13,11 +13,23 @@ type RouteContext<P> = { params: Promise<P> };
 type BaseCtx<P> = { traceId: string; logger: Logger; params: Promise<P> };
 type Handler<C> = (req: Request, ctx: C) => Promise<Response> | Response;
 
-/** Wraps a signed-in route: resolves userId, adds traceId + child logger, maps every error to the envelope. */
+/**
+ * Wraps an authenticated route (a Clerk session or a public API key): resolves userId, adds
+ * traceId + child logger, maps every error to the envelope.
+ */
 export function withHandler<P = Record<string, never>>(
   handler: Handler<BaseCtx<P> & { userId: string }>,
 ) {
-  return wrap<P>(async (req, ctx) => handler(req, { ...ctx, userId: await requireUserId() }));
+  return wrap<P>(async (req, ctx) => handler(req, { ...ctx, userId: await requireUserId(req) }));
+}
+
+/** Same as withHandler, but a signed-in session only: API keys are refused (key management). */
+export function withSessionHandler<P = Record<string, never>>(
+  handler: Handler<BaseCtx<P> & { userId: string }>,
+) {
+  return wrap<P>(async (req, ctx) =>
+    handler(req, { ...ctx, userId: await requireSessionUserId() }),
+  );
 }
 
 /** Same as withHandler but without auth (health, webhooks: they verify signatures themselves). */

@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { NextResponse } from "next/server";
 
 import {
@@ -22,6 +24,18 @@ import { toAttachment } from "@/modules/uploads/upload.service";
 type ChatParams = { chatId: string };
 const query = (req: Request) => Object.fromEntries(new URL(req.url).searchParams);
 
+/**
+ * A send's body. API clients may leave `clientMessageId` out and pass an `Idempotency-Key` header
+ * (a UUID) instead; with neither, the send just isn't idempotent.
+ */
+async function sendBody(req: Request) {
+  const body = (await req.json()) as Record<string, unknown> | null;
+  return SendMessageRequestSchema.parse({
+    ...body,
+    clientMessageId: body?.clientMessageId ?? req.headers.get("idempotency-key") ?? randomUUID(),
+  });
+}
+
 export const listChats = withHandler(async (req, { userId }) => {
   const { limit, cursor } = PageQuerySchema.parse(query(req));
   const page = await chatService.list(userId, limit, cursor);
@@ -31,7 +45,7 @@ export const listChats = withHandler(async (req, { userId }) => {
 /** First message: creates the chat and starts the reply. */
 export const createChat = withHandler(async (req, { userId, traceId, logger }) => {
   await enforceRateLimit("send", userId);
-  const { clientMessageId, text, attachmentIds } = SendMessageRequestSchema.parse(await req.json());
+  const { clientMessageId, text, attachmentIds } = await sendBody(req);
   const ctx = { traceId, logger };
   const sent = await chatService.create(userId, clientMessageId, text, ctx, attachmentIds);
   return NextResponse.json<SendResponse>(sent, { status: 201 });
@@ -41,9 +55,7 @@ export const createChat = withHandler(async (req, { userId, traceId, logger }) =
 export const sendMessage = withHandler<ChatParams>(
   async (req, { userId, params, traceId, logger }) => {
     await enforceRateLimit("send", userId);
-    const { clientMessageId, text, attachmentIds } = SendMessageRequestSchema.parse(
-      await req.json(),
-    );
+    const { clientMessageId, text, attachmentIds } = await sendBody(req);
     const { chatId } = await params;
     const ctx = { traceId, logger };
     const sent = await chatService.send(chatId, userId, clientMessageId, text, ctx, attachmentIds);

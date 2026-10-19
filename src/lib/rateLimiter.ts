@@ -15,6 +15,13 @@ const limiters = {
     // On a slow Redis the request passes: rate limits protect capacity, not data.
     timeout: 1000,
   }),
+  /** Every request made with an API key, per key (sends also count against `send`). */
+  public: new Ratelimit({
+    redis,
+    prefix: "rl:public",
+    limiter: Ratelimit.slidingWindow(60, "1 m"),
+    timeout: 1000,
+  }),
 } satisfies Record<string, Ratelimit>;
 
 export type RateLimitBucket = keyof typeof limiters;

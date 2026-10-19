@@ -21,8 +21,28 @@ model User {
   chats         Chat[]
   ledger        CreditLedger[]
   attachments   Attachment[]
+  apiKeys       ApiKey[]
 
   @@map("users")
+}
+
+/// A public API key (PRD §6.8). Only the SHA-256 of the key is stored; the key is shown once.
+model ApiKey {
+  id         String    @id @default(cuid())
+  userId     String    @map("user_id")
+  name       String
+  /// The key's first characters, for telling keys apart in the list.
+  prefix     String
+  hash       String    @unique
+  createdAt  DateTime  @default(now()) @map("created_at")
+  lastUsedAt DateTime? @map("last_used_at")
+  revokedAt  DateTime? @map("revoked_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// The user's keys, newest first, cursor-paginated.
+  @@index([userId, createdAt, id])
+  @@map("api_keys")
 }
 
 enum TitleSource {
