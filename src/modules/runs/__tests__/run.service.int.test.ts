@@ -112,6 +112,23 @@ describe("send", () => {
   });
 });
 
+describe("get", () => {
+  it("the owner gets the run with a fresh read token; anyone else gets NOT_FOUND", async () => {
+    const user = newUser();
+    const sent = await chatService.create(user, randomUUID(), "hello", ctx);
+
+    expect(await runService.get(sent.run.runId, user)).toMatchObject({
+      runId: sent.run.runId,
+      status: "queued",
+      publicAccessToken: "pk_test",
+      waitpoint: null,
+    });
+    await expect(runService.get(sent.run.runId, newUser())).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+  });
+});
+
 describe("cancel", () => {
   it("a dispatched run moves to stopping and Trigger.dev is told to cancel it", async () => {
     const user = newUser();
