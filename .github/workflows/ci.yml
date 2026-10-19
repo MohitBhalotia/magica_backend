@@ -46,6 +46,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm format:check
+      # The Mintlify API reference is generated from the contracts: fail if it wasn't regenerated.
+      - run: pnpm openapi:check
       # Unit + integration tests. The int project creates a throwaway Neon branch (a copy of
       # production incl. _prisma_migrations), runs `migrate deploy` + a drift check, tests, deletes it.
       - run: pnpm test:coverage

@@ -1,0 +1,79 @@
+---
+title: "Webhooks"
+description: "Signed lifecycle events, retried until delivered."
+---
+
+Register an HTTPS endpoint and we POST you an event when something happens:
+
+| Event             | When                                                                                    |
+| ----------------- | --------------------------------------------------------------------------------------- |
+| `agent.started`   | A run began working on a reply.                                                         |
+| `agent.completed` | A reply finished. `creditsUsedMicro` is what its tools cost.                            |
+| `agent.failed`    | A reply failed, or was stopped (`status` is `failed` or `cancelled`, `error` says why). |
+| `tool.completed`  | A Magica tool call succeeded (`tool`, `toolCallId`, `creditsUsedMicro`).                |
+
+```bash
+curl -X POST https://magica-galaxy-backend.vercel.app/api/v1/webhooks \
+  -H "Authorization: Bearer $MAGICA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com/magica-hook", "events": ["agent.completed", "agent.failed"]}'
+```
+
+Leave out `events` to get all four. The response has the endpoint's **secret** (`whsec_…`), shown only once. `POST /webhooks/{id}/test` sends a signed `ping` so you can check your receiver.
+
+## The event
+
+```json
+{
+  "id": "evt_cmv…_agent.completed",
+  "type": "agent.completed",
+  "createdAt": "2026-10-20T10:00:00.000Z",
+  "data": { "chatId": "…", "runId": "…", "status": "completed", "creditsUsedMicro": 5000 }
+}
+```
+
+Events carry ids, never message text or file links. Fetch those with the API (`GET /chats/{chatId}`).
+
+## Verify the signature
+
+Events are signed with the [Standard Webhooks](https://www.standardwebhooks.com) scheme, using these headers:
+
+- `webhook-id`: the event id, the same on every retry;
+- `webhook-timestamp`: Unix seconds;
+- `webhook-signature`: `v1,` + base64 HMAC-SHA256 of `{id}.{timestamp}.{body}`, keyed with your secret's bytes.
+
+Use an official library and verify the **raw** body:
+
+<CodeGroup>
+
+```ts Node
+import { Webhook } from "standardwebhooks";
+
+const wh = new Webhook(process.env.MAGICA_WEBHOOK_SECRET); // "whsec_…"
+// Throws if the signature is wrong or the timestamp is more than 5 minutes off.
+const event = wh.verify(rawBody, {
+  "webhook-id": req.headers["webhook-id"],
+  "webhook-timestamp": req.headers["webhook-timestamp"],
+  "webhook-signature": req.headers["webhook-signature"],
+});
+```
+
+```python Python
+from standardwebhooks.webhooks import Webhook
+
+wh = Webhook(MAGICA_WEBHOOK_SECRET)  # "whsec_…"
+event = wh.verify(raw_body, request.headers)
+```
+
+</CodeGroup>
+
+## Delivery and retries
+
+- **Success:** any `2xx` within 10 seconds counts as delivered.
+- **Retries:** anything else is retried, up to 8 tries over about 40 minutes, backing off from 10 seconds to 10 minutes. After that the delivery is marked failed.
+- **Duplicates:** each event reaches each endpoint once, but a retry can arrive after a slow success, so **dedupe on `webhook-id`**.
+- **Order:** events can arrive out of order. Use `createdAt`, or read the run.
+- **Redirects:** we don't follow them. Register the final URL.
+- **Allowed URLs:** public HTTPS only. Private, loopback and cloud-metadata addresses are refused, both when you register the endpoint and before every send.
+
+The four events are also in the **API reference** tab, under **Webhooks**.

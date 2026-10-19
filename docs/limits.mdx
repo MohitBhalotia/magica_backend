@@ -1,0 +1,32 @@
+---
+title: "Limits and idempotency"
+description: "Rate limits, page sizes, and safe retries."
+---
+
+## Rate limits
+
+| What                                                | Limit                                         |
+| --------------------------------------------------- | --------------------------------------------- |
+| Requests per API key                                | 60 a minute                                   |
+| Sends (new chats, messages, completions, tool runs) | 20 a minute per user                          |
+| Replies running at once                             | 1 per chat, 3 per user (more wait their turn) |
+
+Past a limit you get `429 RATE_LIMITED` and a `Retry-After` header, in seconds.
+
+## Pages
+
+Lists return `{ items, nextCursor }`. Pass `nextCursor` back as `?cursor=` for the next page. `limit` goes up to 50 (default 20). Pages are stable: new items don't shift what you've already read.
+
+## Idempotency
+
+Sends accept an `Idempotency-Key` header (a UUID). That covers `POST /chats`, `POST /chats/{id}/messages`, `/chat/completions` and `/tools/{tool}/run`.
+
+- **Retries:** send the same key again after a timeout, and you get the same message and run back instead of a second one.
+- **New chats:** the key becomes the new chat's id.
+- **Without a key:** each send is new.
+
+Answering a waitpoint is idempotent on its own: a repeat returns the first answer.
+
+## Credits
+
+Amounts are microcredits (1,000,000 = 1 credit). The model itself is free; tools cost what Magica charges, and each call is charged exactly once. `GET /credits` returns your balance.

@@ -1,0 +1,55 @@
+---
+title: "Chat completions"
+description: "OpenAI-compatible, streaming or not."
+---
+
+`POST /chat/completions` takes the OpenAI chat-completions shape and answers with the Magica agent, tools included. It works with the OpenAI SDKs (see the [Quickstart](/quickstart)).
+
+## Request
+
+| Field      |                                                                                              |
+| ---------- | -------------------------------------------------------------------------------------------- |
+| `model`    | Must be `openrouter/free`; anything else is `400 UNSUPPORTED_MODEL`.                         |
+| `messages` | The **last `user` message** is the new turn. Earlier messages aren't imported.               |
+| `chat_id`  | Optional. Continue this chat: the agent sees its history. Without it, a new chat is created. |
+| `stream`   | `true` for server-sent events.                                                               |
+
+<Note>
+  To hold a conversation, pass back the `chat_id` from the first answer, rather than resending the
+  history in `messages`.
+</Note>
+
+## `stream: false`
+
+The call waits for the answer, up to 60 seconds:
+
+```json
+{
+  "id": "chatcmpl-cmv…",
+  "object": "chat.completion",
+  "model": "openrouter/free",
+  "choices": [
+    { "index": 0, "message": { "role": "assistant", "content": "Hello!" }, "finish_reason": "stop" }
+  ],
+  "usage": { "prompt_tokens": 2259, "completion_tokens": 25, "total_tokens": 2284 },
+  "chat_id": "1cc1b491-…",
+  "run_id": "cmv…"
+}
+```
+
+If the reply takes longer, the answer is `202` with the run instead. That happens with a generation of several minutes, or when the agent is [waiting on you](/runs#approvals). Poll it as in [Runs](/runs).
+
+## `stream: true`
+
+The answer is `text/event-stream`, with one `chat.completion.chunk` per `data:` line and a final `data: [DONE]`:
+
+```text
+data: {"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}],"magica":{"chat_id":"…","run_id":"…"}}
+data: {"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"1, 2"},"finish_reason":null}]}
+data: {"object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+data: [DONE]
+```
+
+- **Tool steps:** they arrive in a `magica.tool` field (`{ id, name, input }`, then `{ id, name, output }`). OpenAI clients ignore it.
+- **Long runs:** the stream ends after about 280 seconds even if the run hasn't. In that case the last chunk has `finish_reason: null` and `magica.status: "running"`, so poll the run.
+- **Disconnects:** if you close the connection, the run carries on.

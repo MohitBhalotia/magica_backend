@@ -1,0 +1,56 @@
+---
+title: "Quickstart"
+description: "Create a key and get your first answer."
+---
+
+<Steps>
+  <Step title="Create an API key">
+    In the Magica app, open the user menu (bottom left) and choose **API keys**, then **Create key**. Copy the key: it starts with `ak_` and is shown only once.
+  </Step>
+  <Step title="Ask the agent">
+    <CodeGroup>
+    ```bash curl
+    curl https://magica-galaxy-backend.vercel.app/api/v1/chat/completions \
+      -H "Authorization: Bearer $MAGICA_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{"model": "openrouter/free", "messages": [{"role": "user", "content": "Say hello"}]}'
+    ```
+
+    ```ts OpenAI SDK (Node)
+    import OpenAI from "openai";
+
+    const client = new OpenAI({
+      apiKey: process.env.MAGICA_API_KEY,
+      baseURL: "https://magica-galaxy-backend.vercel.app/api/v1",
+    });
+
+    const answer = await client.chat.completions.create({
+      model: "openrouter/free",
+      messages: [{ role: "user", content: "Say hello" }],
+    });
+    console.log(answer.choices[0].message.content);
+    ```
+
+    ```python OpenAI SDK (Python)
+    from openai import OpenAI
+
+    client = OpenAI(api_key=MAGICA_API_KEY, base_url="https://magica-galaxy-backend.vercel.app/api/v1")
+    answer = client.chat.completions.create(
+        model="openrouter/free",
+        messages=[{"role": "user", "content": "Say hello"}],
+    )
+    print(answer.choices[0].message.content)
+    ```
+    </CodeGroup>
+
+  </Step>
+  <Step title="Find it in the app">
+    The response has a `chat_id`. The same conversation is in your Magica sidebar, and you can continue it in the app or by passing `chat_id` back.
+  </Step>
+</Steps>
+
+Next:
+
+- **Long jobs:** read [Runs](/runs) for jobs that take minutes.
+- **Tools:** read [Running tools](/tools) to call the media tools directly.
+- **Events:** set up [Webhooks](/webhooks) to be told when things finish.

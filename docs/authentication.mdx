@@ -1,0 +1,18 @@
+---
+title: "Authentication"
+description: "API keys, and what a key can and can't do."
+---
+
+Send your key as a bearer token on every request:
+
+```http
+Authorization: Bearer ak_3f9Q2x…
+```
+
+- **Where keys come from:** you create them in the app (user menu → **API keys**). Each key is shown once; we store only its SHA-256 hash.
+- **What a key can do:** act as you on every endpoint, for your own chats, runs, credits and webhooks only. Anything that isn't yours answers `404`, the same as something that doesn't exist.
+- **What a key can't do:** create, list or revoke keys. That needs the signed-in app, so a leaked key can't mint more.
+- **Revoking:** revoke a key in the same dialog. It stops working at once.
+- **Errors:** an unknown or revoked key answers `401 UNAUTHENTICATED`.
+
+<Warning>Keep keys on your server. Never put them in a browser or mobile app.</Warning>
