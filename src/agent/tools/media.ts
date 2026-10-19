@@ -8,6 +8,7 @@ import { waitForUser } from "@/agent/tools/waitForUser";
 import { AppError } from "@/lib/errors";
 import { creditService } from "@/modules/credits/credit.service";
 import { toolRepository } from "@/modules/tools/tool.repository";
+import { waitpointRepository } from "@/modules/waitpoints/waitpoint.repository";
 import { magica, type MagicaJob } from "@/providers/magica";
 
 /** Magica only fetches public HTTPS media. */
@@ -43,13 +44,22 @@ export async function runMediaTool<S extends z.ZodType>(
   const call = { userId: ctx.userId, runId: ctx.runId, invocationId: ctx.invocationId };
   const cost = await estimate(spec.job, ctx.signal);
   if (cost === null || cost > APPROVAL_THRESHOLD_MICRO) {
-    const { approved } = await waitForUser(ctx, "credit_approval", {
-      tool: ctx.toolName,
-      estimateMicro: cost === null ? null : Number(cost),
-      balanceMicro: Number(await creditService.currentBalance(ctx.userId)),
-    });
+    // A model that retries after a decline doesn't get to ask the user again in this turn.
+    const approved =
+      !(await waitpointRepository.hasDeclined(ctx.runId)) &&
+      (
+        await waitForUser(ctx, "credit_approval", {
+          tool: ctx.toolName,
+          estimateMicro: cost === null ? null : Number(cost),
+          balanceMicro: Number(await creditService.currentBalance(ctx.userId)),
+        })
+      ).approved;
+    // Worded for the model too: "You declined" made it think the call had failed and retry.
     if (!approved)
-      throw new AppError("APPROVAL_DECLINED", "You declined this generation, so it didn't run.");
+      throw new AppError(
+        "APPROVAL_DECLINED",
+        "The user declined this generation, so it didn't run.",
+      );
   }
   await creditService.reserveTool(call, cost ?? UNKNOWN_COST_MICRO);
   try {
