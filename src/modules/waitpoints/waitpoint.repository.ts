@@ -48,6 +48,17 @@ export const waitpointRepository = {
   findPending: (runId: string, db: DbClient = prisma) =>
     db.waitpoint.findFirst({ where: { runId, status: WaitpointStatus.pending } }),
 
+  /** Whether the user already declined a credit approval in this run. */
+  hasDeclined: async (runId: string, db: DbClient = prisma) =>
+    (await db.waitpoint.count({
+      where: {
+        runId,
+        status: WaitpointStatus.answered,
+        type: "credit_approval",
+        response: { path: ["approved"], equals: false },
+      },
+    })) > 0,
+
   /** pending → answered, exactly once: true only for the answer that won. */
   async answer(id: string, response: Prisma.InputJsonValue, db: DbClient = prisma) {
     const { count } = await db.waitpoint.updateMany({
