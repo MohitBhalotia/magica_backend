@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { ContentBlocksSchema } from "./blocks.ts";
+import { ContentBlocksSchema, MessageMetadataSchema } from "./blocks.ts";
 import { ErrorCodeSchema } from "./errors.ts";
 import { pageSchema, PageQuerySchema } from "./pagination.ts";
 import { RunHandleSchema } from "./run.ts";
@@ -46,6 +46,7 @@ export const MessageSchema = z.object({
   status: MessageStatusSchema,
   text: z.string(),
   contentBlocks: ContentBlocksSchema,
+  metadata: MessageMetadataSchema.nullable(),
   errorCode: ErrorCodeSchema.nullable(),
   errorMessage: z.string().nullable(),
   createdAt: z.iso.datetime(),

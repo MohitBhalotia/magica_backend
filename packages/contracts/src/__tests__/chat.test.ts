@@ -76,6 +76,7 @@ describe("ChatDetailSchema", () => {
     status: "success",
     text: "hi",
     contentBlocks: [{ type: "text", text: "hi" }],
+    metadata: null,
     errorCode: null,
     errorMessage: null,
     createdAt: at,

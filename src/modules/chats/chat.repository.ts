@@ -145,6 +145,7 @@ export const chatRepository = {
         status: m.status,
         text: m.text,
         contentBlocks: m.contentBlocks ?? [],
+        metadata: m.metadata ?? undefined,
         createdAt: m.createdAt,
       })),
     });

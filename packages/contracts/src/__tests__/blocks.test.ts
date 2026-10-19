@@ -1,30 +1,32 @@
 import { describe, expect, it } from "vitest";
 
-import { ContentBlocksSchema } from "../blocks.ts";
+import { ContentBlocksSchema, MessageMetadataSchema } from "../blocks.ts";
 
 describe("ContentBlocksSchema", () => {
-  it("keeps an ordered mix of reasoning, text and notices", () => {
-    const blocks = [
-      { type: "reasoning", text: "Plan the answer", durationMs: 1200 },
-      { type: "text", text: "Hello" },
-      { type: "notice", level: "warning", code: "MODEL_UNAVAILABLE", message: "Stopped early." },
+  it("accepts AI SDK message parts and drops fields we don't store", () => {
+    const parts = [
+      { type: "step-start" },
+      { type: "reasoning", text: "Plan the answer", state: "done", providerMetadata: { x: 1 } },
+      { type: "text", text: "Hello", state: "done" },
     ];
-    expect(ContentBlocksSchema.parse(blocks).map((b) => b.type)).toEqual([
-      "reasoning",
-      "text",
-      "notice",
+    expect(ContentBlocksSchema.parse(parts)).toEqual([
+      { type: "step-start" },
+      { type: "reasoning", text: "Plan the answer", state: "done" },
+      { type: "text", text: "Hello", state: "done" },
     ]);
   });
 
-  it("rejects unknown block types, unknown error codes and negative durations", () => {
+  it("rejects unknown part types and states", () => {
     expect(ContentBlocksSchema.safeParse([{ type: "image", url: "x" }]).success).toBe(false);
-    expect(
-      ContentBlocksSchema.safeParse([
-        { type: "notice", level: "error", code: "NOPE", message: "x" },
-      ]).success,
-    ).toBe(false);
-    expect(
-      ContentBlocksSchema.safeParse([{ type: "reasoning", text: "x", durationMs: -1 }]).success,
-    ).toBe(false);
+    expect(ContentBlocksSchema.safeParse([{ type: "text", text: "x", state: "x" }]).success).toBe(
+      false,
+    );
+  });
+});
+
+describe("MessageMetadataSchema", () => {
+  it("keeps thinking time as whole non-negative milliseconds", () => {
+    expect(MessageMetadataSchema.parse({ thinkingMs: 900 })).toEqual({ thinkingMs: 900 });
+    expect(MessageMetadataSchema.safeParse({ thinkingMs: -1 }).success).toBe(false);
   });
 });

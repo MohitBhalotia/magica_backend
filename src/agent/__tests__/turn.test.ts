@@ -1,8 +1,9 @@
-import { APICallError, simulateReadableStream } from "ai";
+import { APICallError, simulateReadableStream, type UIMessageChunk } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it, vi } from "vitest";
 
-import { runTurn, toBlocks, type Draft } from "@/agent/turn";
+import { streamTurn, toStored, toTurnError } from "@/agent/turn";
+import { AppError } from "@/lib/errors";
 
 const usage = {
   inputTokens: { total: 3, noCache: 3, cacheRead: undefined, cacheWrite: undefined },
@@ -28,93 +29,114 @@ const answer = (...deltas: string[]) => ({
   }),
 });
 
-const httpError = (statusCode: number, headers: Record<string, string> = {}) =>
+// retry-after-ms 0 keeps the SDK's busy-model backoff instant in tests.
+const httpError = (statusCode: number) =>
   new APICallError({
     message: `HTTP ${String(statusCode)}`,
     url: "https://openrouter.ai/api/v1/chat/completions",
     requestBodyValues: {},
     statusCode,
-    responseHeaders: headers,
+    responseHeaders: { "retry-after-ms": "0" },
   });
 
 /** The model answers with `first` on the first call and `then` on every later call. */
-function setup(first: () => ReturnType<typeof answer>, then = first) {
+async function turn(first: () => ReturnType<typeof answer>, then = first, signal?: AbortSignal) {
   const doStream = vi.fn(() =>
     Promise.resolve(doStream.mock.calls.length === 1 ? first() : then()),
   );
-  const draft: Draft = { text: "", reasoning: "" };
-  const io = {
+  const { stream, ended } = streamTurn({
     model: new MockLanguageModelV4({ doStream }),
-    messages: [{ role: "user" as const, content: "Hi" }],
-    draft,
-    onText: vi.fn(() => Promise.resolve()),
-    onReasoning: vi.fn(() => Promise.resolve()),
-    sleep: vi.fn(() => Promise.resolve()),
-  };
-  return { io, draft, doStream };
+    messages: [{ role: "user", content: "Hi" }],
+    signal,
+  });
+  const chunks: UIMessageChunk[] = [];
+  const reader = stream.getReader();
+  for (let r = await reader.read(); !r.done; r = await reader.read()) chunks.push(r.value);
+  return { end: await ended, chunks, calls: doStream.mock.calls.length };
 }
 
-describe("runTurn", () => {
-  it("streams reasoning and text into the draft and the sinks", async () => {
-    const { io, draft } = setup(() => answer("Hello", ", world"));
+const busy = () => {
+  throw httpError(503);
+};
 
-    const result = await runTurn(io);
+describe("streamTurn", () => {
+  it("streams reasoning and text as UI chunks and ends with the saved message", async () => {
+    const { end, chunks } = await turn(() => answer("Hello", ", world"));
 
-    expect(draft).toMatchObject({ text: "Hello, world", reasoning: "Let me think." });
-    expect(draft.reasoningMs).toBeGreaterThanOrEqual(0);
-    expect(io.onText.mock.calls).toEqual([["Hello"], [", world"]]);
-    expect(io.onReasoning).toHaveBeenCalledWith("Let me think.");
-    expect(result.usage?.totalTokens).toBe(8);
-    expect(toBlocks(draft).map((b) => b.type)).toEqual(["reasoning", "text"]);
+    expect(chunks.map((c) => c.type)).toContain("reasoning-delta");
+    expect(end).toMatchObject({ status: "completed", usage: { totalTokens: 8 } });
+    const stored = toStored(end.message);
+    expect(stored.text).toBe("Hello, world");
+    expect(stored.blocks.map((b) => b.type)).toEqual(["step-start", "reasoning", "text"]);
+    expect(stored.metadata.thinkingMs).toBeGreaterThanOrEqual(0);
   });
 
-  it("backs off on a busy model, honouring Retry-After, then answers", async () => {
-    const { io, draft } = setup(
-      () => {
-        throw httpError(429, { "retry-after": "7" });
-      },
-      () => answer("Done"),
-    );
+  it("retries a busy model inside the SDK, then answers", async () => {
+    const { end, calls } = await turn(busy, () => answer("Done"));
 
-    await runTurn(io);
-
-    expect(io.sleep).toHaveBeenCalledExactlyOnceWith(7);
-    expect(draft.text).toBe("Done");
+    expect(calls).toBe(2);
+    expect(end.status).toBe("completed");
+    expect(toStored(end.message).text).toBe("Done");
   });
 
-  it("gives up with MODEL_UNAVAILABLE after 3 busy retries", async () => {
-    const { io, doStream } = setup(() => {
-      throw httpError(503);
+  it("gives up on a model that stays busy with MODEL_UNAVAILABLE and a safe error chunk", async () => {
+    const { end, chunks, calls } = await turn(busy);
+
+    expect(calls).toBe(4); // first try + 3 SDK retries
+    expect(end.status).toBe("failed");
+    expect(toTurnError(end.error).code).toBe("MODEL_UNAVAILABLE");
+    expect(chunks).toContainEqual({
+      type: "error",
+      errorText: "Free models are busy right now. Try again in a minute.",
     });
-
-    await expect(runTurn(io)).rejects.toMatchObject({ code: "MODEL_UNAVAILABLE" });
-    expect(io.sleep.mock.calls).toEqual([[5], [10], [20]]);
-    expect(doStream).toHaveBeenCalledTimes(4);
   });
 
   it("retries an empty answer once, then fails with EMPTY_RESPONSE", async () => {
-    const { io, doStream } = setup(() => answer());
+    const empty = await turn(() => answer());
+    expect(empty.calls).toBe(2);
+    expect(empty.end.status).toBe("failed");
+    expect(toTurnError(empty.end.error).code).toBe("EMPTY_RESPONSE");
 
-    await expect(runTurn(io)).rejects.toMatchObject({ code: "EMPTY_RESPONSE" });
-    expect(doStream).toHaveBeenCalledTimes(2);
+    const recovered = await turn(
+      () => answer(),
+      () => answer("Second time"),
+    );
+    expect(recovered.end.status).toBe("completed");
+    expect(toStored(recovered.end.message).text).toBe("Second time");
   });
 
-  it("does not retry other provider errors", async () => {
-    const { io, doStream } = setup(() => {
+  it("does not retry an auth error", async () => {
+    const { end, calls } = await turn(() => {
       throw httpError(401);
     });
 
-    await expect(runTurn(io)).rejects.toMatchObject({ code: "PROVIDER_AUTH" });
-    expect(doStream).toHaveBeenCalledOnce();
+    expect(calls).toBe(1);
+    expect(toTurnError(end.error).code).toBe("PROVIDER_AUTH");
   });
 
-  it("stops without retrying when the turn is aborted", async () => {
-    const { io, doStream } = setup(() => answer("Partial"));
+  it("a stopped turn ends as cancelled", async () => {
     const controller = new AbortController();
     controller.abort();
 
-    await expect(runTurn({ ...io, signal: controller.signal })).rejects.toThrow();
-    expect(doStream).toHaveBeenCalledOnce();
-    expect(io.sleep).not.toHaveBeenCalled();
+    const { end } = await turn(() => answer("Partial"), undefined, controller.signal);
+
+    expect(end.status).toBe("cancelled");
+  });
+});
+
+describe("toTurnError", () => {
+  it("never leaks an unknown failure, and keeps app errors as they are", () => {
+    const internal = toTurnError(new Error("db password=hunter2"));
+    expect(internal.code).toBe("INTERNAL");
+    expect(internal.message).not.toContain("hunter2");
+
+    const empty = new AppError("EMPTY_RESPONSE", "Empty.");
+    expect(toTurnError(empty)).toBe(empty);
+  });
+
+  it("maps credits and server errors to safe provider codes", () => {
+    expect(toTurnError(httpError(402)).code).toBe("PROVIDER_CREDITS");
+    expect(toTurnError(httpError(500))).toMatchObject({ code: "PROVIDER_ERROR", retryable: true });
+    expect(toTurnError(httpError(400))).toMatchObject({ code: "PROVIDER_ERROR", retryable: false });
   });
 });

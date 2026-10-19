@@ -3,6 +3,7 @@ import type { z } from "zod";
 import {
   ContentBlocksSchema,
   ErrorCodeSchema,
+  MessageMetadataSchema,
   type ChatSummary,
   type Message,
   type MessageRoleSchema,
@@ -39,6 +40,7 @@ export const toMessage = (m: Db.Message): Message => ({
   status: m.status,
   text: m.text,
   contentBlocks: ContentBlocksSchema.parse(m.contentBlocks),
+  metadata: m.metadata === null ? null : MessageMetadataSchema.parse(m.metadata),
   errorCode: m.errorCode === null ? null : ErrorCodeSchema.parse(m.errorCode),
   errorMessage: m.errorMessage,
   createdAt: m.createdAt.toISOString(),

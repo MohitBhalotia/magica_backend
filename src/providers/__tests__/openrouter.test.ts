@@ -3,7 +3,8 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { openRouterFree, toProviderError } from "@/providers/openrouter";
+import { toTurnError } from "@/agent/turn";
+import { openRouterFree } from "@/providers/openrouter";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const server = setupServer();
@@ -84,50 +85,14 @@ describe("openRouterFree", () => {
     expect(auth).toBe("Bearer sk-or-test");
   });
 
-  it("a 429 surfaces as an API error that maps to a retryable rate limit", async () => {
+  it("a 429 from OpenRouter surfaces as an API error that maps to MODEL_UNAVAILABLE", async () => {
     server.use(
       http.post(ENDPOINT, () =>
-        HttpResponse.json(
-          { error: { message: "slow down", code: 429 } },
-          { status: 429, headers: { "Retry-After": "7" } },
-        ),
+        HttpResponse.json({ error: { message: "slow down", code: 429 } }, { status: 429 }),
       ),
     );
     const error = (await run()).find((p) => p.type === "error");
-    expect(error?.type === "error" && toProviderError(error.error)).toMatchObject({
-      code: "PROVIDER_RATE_LIMITED",
-      retryable: true,
-      details: { retryAfterSeconds: 7 },
-    });
-  });
-});
-
-describe("toProviderError", () => {
-  const apiError = (statusCode: number) =>
-    new APICallError({
-      message: "x",
-      url: ENDPOINT,
-      requestBodyValues: {},
-      statusCode,
-      responseHeaders: {},
-    });
-
-  it("maps auth, credits and server errors to safe codes", () => {
-    expect(toProviderError(apiError(401)).code).toBe("PROVIDER_AUTH");
-    expect(toProviderError(apiError(402)).code).toBe("PROVIDER_CREDITS");
-    expect(toProviderError(apiError(500))).toMatchObject({
-      code: "PROVIDER_ERROR",
-      retryable: true,
-    });
-    expect(toProviderError(apiError(400))).toMatchObject({
-      code: "PROVIDER_ERROR",
-      retryable: false,
-    });
-  });
-
-  it("treats a non-API failure as a retryable provider error with a safe message", () => {
-    const err = toProviderError(new Error("socket hang up"));
-    expect(err).toMatchObject({ code: "PROVIDER_ERROR", retryable: true });
-    expect(err.message).not.toContain("socket");
+    expect(error?.type === "error" && APICallError.isInstance(error.error)).toBe(true);
+    expect(error?.type === "error" && toTurnError(error.error).code).toBe("MODEL_UNAVAILABLE");
   });
 });

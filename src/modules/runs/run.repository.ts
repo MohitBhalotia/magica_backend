@@ -1,4 +1,4 @@
-import type { ContentBlock, ErrorCode } from "@mohitbhalotia/magica-contracts";
+import type { ContentBlock, ErrorCode, MessageMetadata } from "@mohitbhalotia/magica-contracts";
 
 import { db as prisma, type DbClient } from "@/lib/db";
 
@@ -33,7 +33,7 @@ export type RunEnd = {
   status: typeof RunStatus.completed | typeof RunStatus.failed | typeof RunStatus.cancelled;
   blocks: ContentBlock[];
   text: string;
-  thinkingMs: number;
+  metadata: MessageMetadata;
   routedModel?: string;
   tokenUsage?: Prisma.InputJsonObject;
   error?: { code: ErrorCode; message: string };
@@ -121,13 +121,6 @@ export const runRepository = {
     return run && isActive(run.status) ? run : null;
   },
 
-  /** First text arrived: thinking → working. Never undoes a Stop. */
-  markWorking: (id: string, db: DbClient = prisma) =>
-    db.agentRun.updateMany({
-      where: { id, status: RunStatus.thinking },
-      data: { status: RunStatus.working },
-    }),
-
   /** Ends an active run and fills its assistant message; false if the run had already ended. */
   async settle(run: AgentRun, end: RunEnd, db: DbClient = prisma) {
     const now = new Date();
@@ -137,7 +130,7 @@ export const runRepository = {
       data: {
         status: end.status,
         routedModel: end.routedModel,
-        thinkingMs: end.thinkingMs,
+        thinkingMs: end.metadata.thinkingMs ?? 0,
         finishedAt: now,
         ...error,
       },
@@ -148,6 +141,7 @@ export const runRepository = {
       data: {
         status: MESSAGE_STATUS[end.status],
         contentBlocks: end.blocks,
+        metadata: end.metadata,
         text: end.text,
         runId: run.id,
         tokenUsage: end.tokenUsage,

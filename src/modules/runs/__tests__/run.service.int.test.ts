@@ -128,7 +128,7 @@ describe("worker", () => {
   const answer = {
     blocks: [{ type: "text" as const, text: "Hi there" }],
     text: "Hi there",
-    thinkingMs: 0,
+    metadata: { thinkingMs: 1200 },
   };
   const begin = async (runId: string) => {
     const run = await runRepository.begin(runId);
@@ -146,7 +146,12 @@ describe("worker", () => {
     expect(await runService.settle(run, { ...answer, status: "failed" })).toBe(false);
 
     const reply = await db.message.findUniqueOrThrow({ where: { id: sent.assistantMessageId } });
-    expect(reply).toMatchObject({ status: "success", text: "Hi there", runId: run.id });
+    expect(reply).toMatchObject({
+      status: "success",
+      text: "Hi there",
+      runId: run.id,
+      metadata: { thinkingMs: 1200 },
+    });
     expect(await runRepository.begin(sent.run.runId)).toBeNull();
     expect(await chatRepository.history(sent.chatId, 20)).toEqual([
       { role: "user", text: "hello" },
@@ -160,7 +165,6 @@ describe("worker", () => {
     const sent = await first(user);
     const run = await begin(sent.run.runId);
     await runService.cancel(sent.run.runId, user, ctx);
-    expect(await runRepository.markWorking(run.id)).toEqual({ count: 0 }); // Stop wins
 
     await runService.settle(run, { ...answer, status: "cancelled" });
     const reply = await db.message.findUniqueOrThrow({ where: { id: sent.assistantMessageId } });

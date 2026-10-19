@@ -86,7 +86,7 @@ flowchart LR
 | **`magica-run` task** (child) | Trigger.dev worker | One Magica generation: estimate, reserve, POST, wait for webhook or reconcile, copy to R2, settle | Re-POST when a `magicaRunId` exists |
 | **Cron tasks** | Trigger.dev schedules | Stale-run sweeper, re-dispatching undispatched runs, waitpoint expiry, purge, quota reset, webhook redelivery | — |
 | **PostgreSQL** (Neon) | Managed | All durable state; uniqueness = idempotency; partial unique = run lock | Hold ephemeral token-stream chunks |
-| **Trigger.dev Realtime** | Managed | Transport for run metadata (bounded) and text/reasoning streams (durable for 28 days, resumable) | Be the source of truth for settled turns |
+| **Trigger.dev Realtime** | Managed | Transport for run metadata (bounded) and the turn's AI SDK UI message stream (DEC-052; durable for 28 days, resumable) | Be the source of truth for settled turns |
 | **Upstash Redis** | Managed | Ephemeral rate-limit counters (user sends and uploads, API keys, OpenRouter and Magica buckets) | Hold durable state, locks, idempotency or credits |
 | **R2** | Cloudflare | Uploaded and generated media (permanent URLs) | — |
 | **Contracts** (`@mohitbhalotia/magica-contracts`) | npm package | Every Zod schema across API, realtime, tools, webhooks and errors | — |
@@ -267,7 +267,7 @@ sequenceDiagram
 | Tool call emitted | Upsert `ToolInvocation` + `tool_use` block |
 | Tool result | Update invocation + `tool_result` / `asset_ref` blocks (in model order) |
 | Turn terminal | Message status, usage, credits (single transaction) |
-| Task crash → retry | Recover the partial segment by reading the run's own text stream, then continue |
+| Task crash → retry | Recover the partial segment by reading the run's own UI message stream, then continue |
 | Terminal failure | `onFailure` writes the partial text plus a failed status, so the brief's "preserve streamed text" is met |
 
 This works out to **≈ 0.2 DB writes/s per active run**, versus ~20–50/s if we wrote every token.
