@@ -16,6 +16,8 @@ import {
 import { runTask } from "@/modules/runs/run.task";
 import { toolRepository } from "@/modules/tools/tool.repository";
 import { toWaitpoint, waitpointRepository } from "@/modules/waitpoints/waitpoint.repository";
+import { webhookRepository } from "@/modules/webhooks/webhook.repository";
+import { runEvent, webhookService } from "@/modules/webhooks/webhook.service";
 
 import { Prisma, RunStatus, type AgentRun } from "../../../prisma/generated/client";
 
@@ -173,8 +175,18 @@ export const runService = {
       await settleDead(run);
       settled++;
     }
-    if (queued.length || settled)
-      logger.warn({ redispatched: queued.length, settled }, "run sweeper recovered runs");
+    // Webhook deliveries whose task never started (the process died right after the commit).
+    const stuck = await webhookRepository.findStuck(
+      new Date(now - REDISPATCH_AFTER_MS),
+      SWEEP_LIMIT,
+    );
+    await webhookService.dispatch(stuck.map((d) => d.id));
+
+    if (queued.length || settled || stuck.length)
+      logger.warn(
+        { redispatched: queued.length, settled, webhooks: stuck.length },
+        "run sweeper recovered runs",
+      );
     return { redispatched: queued.length, settled };
   },
 
@@ -189,10 +201,13 @@ export const runService = {
     const run = await ownedRun(runId, userId);
     if (!isActive(run.status)) return toHandle(run);
     if (!run.triggerRunId) {
-      const cancelled = await db.$transaction(async (tx) => {
+      const { cancelled, deliveries } = await db.$transaction(async (tx) => {
         await creditService.endAdmission(run.id, tx);
-        return runRepository.cancelUndispatched(run, tx);
+        const cancelled = await runRepository.cancelUndispatched(run, tx);
+        const event = runEvent(run, "agent.failed", { status: "cancelled" });
+        return { cancelled, deliveries: await webhookService.emit(run.userId, event, tx) };
       });
+      await webhookService.dispatch(deliveries);
       return toHandle(cancelled);
     }
 
@@ -239,17 +254,25 @@ export const runService = {
 
   /**
    * Worker: in one transaction, the turn's end, its assistant message (with what its tools were
-   * charged), the chat's new activity and the release of the admission reserve.
+   * charged), the chat's new activity, the release of the admission reserve and the
+   * `agent.completed` / `agent.failed` webhook (outbox), which is sent after the commit.
    */
-  settle: (run: AgentRun, end: RunEnd) =>
-    db.$transaction(async (tx) => {
+  async settle(run: AgentRun, end: RunEnd) {
+    const { ended, deliveries } = await db.$transaction(async (tx) => {
       const charged = await creditRepository.chargedForRun(run.id, tx);
       const metadata = { ...end.metadata, creditsUsedMicro: Number(charged) };
       const ended = await runRepository.settle(run, { ...end, metadata }, tx);
-      if (ended) {
-        await chatRepository.touch(run.chatId, tx);
-        await creditService.endAdmission(run.id, tx);
-      }
-      return ended;
-    }),
+      if (!ended) return { ended, deliveries: [] };
+      await chatRepository.touch(run.chatId, tx);
+      await creditService.endAdmission(run.id, tx);
+      const event = runEvent(run, end.status === "completed" ? "agent.completed" : "agent.failed", {
+        status: end.status,
+        error: end.error,
+        creditsUsedMicro: Number(charged),
+      });
+      return { ended, deliveries: await webhookService.emit(run.userId, event, tx) };
+    });
+    await webhookService.dispatch(deliveries);
+    return ended;
+  },
 };

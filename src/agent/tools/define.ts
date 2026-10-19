@@ -6,6 +6,7 @@ import { TOOLS, type ToolName } from "@mohitbhalotia/magica-contracts";
 import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { toolRepository } from "@/modules/tools/tool.repository";
+import { webhookService } from "@/modules/webhooks/webhook.service";
 import { withoutSignatures } from "@/providers/r2";
 
 import type { Prisma } from "../../../prisma/generated/client";
@@ -113,6 +114,23 @@ async function runToolCall<I, O>(
     });
     const output = def.output.parse(result);
     await toolRepository.succeed(call, output as Prisma.InputJsonValue);
+    // A Magica tool finished: `tool.completed` for the user's webhooks (PRD §6.8).
+    if (TOOLS[def.name] === "media")
+      await webhookService.dispatch(
+        await webhookService.emit(turn.userId, {
+          id: `evt_${call.id}_tool.completed`,
+          type: "tool.completed",
+          createdAt: new Date().toISOString(),
+          data: {
+            chatId: turn.chatId,
+            runId: turn.runId,
+            tool: def.name,
+            toolCallId,
+            status: "succeeded",
+            creditsUsedMicro: (output as { creditUsed?: number }).creditUsed,
+          },
+        }),
+      );
     return output;
   } catch (err) {
     if (turn.signal?.aborted) {
