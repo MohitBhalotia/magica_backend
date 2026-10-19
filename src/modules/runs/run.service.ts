@@ -3,7 +3,8 @@ import type { RunHandle, SendResponse } from "@mohitbhalotia/magica-contracts";
 import { db, type DbClient } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import type { Logger } from "@/lib/logger";
-import { isActive, runRepository } from "@/modules/runs/run.repository";
+import { chatRepository } from "@/modules/chats/chat.repository";
+import { isActive, runRepository, type RunEnd } from "@/modules/runs/run.repository";
 import { runTask } from "@/modules/runs/run.task";
 
 import { Prisma, RunStatus, type AgentRun } from "../../../prisma/generated/client";
@@ -124,4 +125,12 @@ export const runService = {
     );
     return runService.respond(next, ctx);
   },
+
+  /** Worker: the turn's end, its assistant message and the chat's new activity in one transaction. */
+  settle: (run: AgentRun, end: RunEnd) =>
+    db.$transaction(async (tx) => {
+      const ended = await runRepository.settle(run, end, tx);
+      if (ended) await chatRepository.touch(run.chatId, tx);
+      return ended;
+    }),
 };

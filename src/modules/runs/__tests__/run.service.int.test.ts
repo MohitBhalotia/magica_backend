@@ -6,7 +6,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
 import type { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
+import { chatRepository } from "@/modules/chats/chat.repository";
 import { chatService } from "@/modules/chats/chat.service";
+import { runRepository } from "@/modules/runs/run.repository";
 import { runService } from "@/modules/runs/run.service";
 
 vi.mock("@trigger.dev/sdk", () => ({
@@ -119,6 +121,51 @@ describe("retry", () => {
     await expect(runService.retry(sent.run.runId, user, ctx)).rejects.toEqual(
       code("VALIDATION_FAILED"),
     );
+  });
+});
+
+describe("worker", () => {
+  const answer = {
+    blocks: [{ type: "text" as const, text: "Hi there" }],
+    text: "Hi there",
+    thinkingMs: 0,
+  };
+  const begin = async (runId: string) => {
+    const run = await runRepository.begin(runId);
+    if (!run) throw new Error("expected an active run");
+    return run;
+  };
+
+  it("picks up a queued run, settles it once and frees the chat", async () => {
+    const user = newUser();
+    const sent = await first(user);
+    const run = await begin(sent.run.runId);
+    expect(run.status).toBe("thinking");
+
+    expect(await runService.settle(run, { ...answer, status: "completed" })).toBe(true);
+    expect(await runService.settle(run, { ...answer, status: "failed" })).toBe(false);
+
+    const reply = await db.message.findUniqueOrThrow({ where: { id: sent.assistantMessageId } });
+    expect(reply).toMatchObject({ status: "success", text: "Hi there", runId: run.id });
+    expect(await runRepository.begin(sent.run.runId)).toBeNull();
+    expect(await chatRepository.history(sent.chatId, 20)).toEqual([
+      { role: "user", text: "hello" },
+      { role: "assistant", text: "Hi there" },
+    ]);
+    await expect(followUp(sent.chatId, user)).resolves.toBeDefined();
+  });
+
+  it("a stopped run keeps its partial answer as cancelled", async () => {
+    const user = newUser();
+    const sent = await first(user);
+    const run = await begin(sent.run.runId);
+    await runService.cancel(sent.run.runId, user, ctx);
+    expect(await runRepository.markWorking(run.id)).toEqual({ count: 0 }); // Stop wins
+
+    await runService.settle(run, { ...answer, status: "cancelled" });
+    const reply = await db.message.findUniqueOrThrow({ where: { id: sent.assistantMessageId } });
+    expect(reply).toMatchObject({ status: "cancelled", text: "Hi there" });
+    expect(await chatRepository.history(sent.chatId, 20)).toHaveLength(1); // not in context
   });
 });
 

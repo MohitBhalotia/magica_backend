@@ -1,9 +1,12 @@
+import type { ContentBlock, ErrorCode } from "@mohitbhalotia/magica-contracts";
+
 import { db as prisma, type DbClient } from "@/lib/db";
 
 import {
   MessageRole,
   MessageStatus,
   RunStatus,
+  type AgentRun,
   type Prisma,
 } from "../../../prisma/generated/client";
 
@@ -24,6 +27,23 @@ type NewRun = {
   attempt: number;
   traceId: string;
 };
+
+/** How a turn ended, and the assistant message it leaves behind. */
+export type RunEnd = {
+  status: typeof RunStatus.completed | typeof RunStatus.failed | typeof RunStatus.cancelled;
+  blocks: ContentBlock[];
+  text: string;
+  thinkingMs: number;
+  routedModel?: string;
+  tokenUsage?: Prisma.InputJsonObject;
+  error?: { code: ErrorCode; message: string };
+};
+
+const MESSAGE_STATUS = {
+  completed: MessageStatus.success,
+  failed: MessageStatus.failed,
+  cancelled: MessageStatus.cancelled,
+} as const;
 
 export const runRepository = {
   findByDispatchKey: (dispatchKey: string, db: DbClient = prisma) =>
@@ -86,6 +106,57 @@ export const runRepository = {
       where: { id: run.id },
       data: { status: RunStatus.cancelled, finishedAt: now },
     });
+  },
+
+  /** Worker pickup: queued → thinking. Null when the run has already ended. */
+  async begin(id: string, db: DbClient = prisma) {
+    await db.agentRun.updateMany({
+      where: { id, status: RunStatus.queued },
+      data: { status: RunStatus.thinking, startedAt: new Date() },
+    });
+    const run = await db.agentRun.findUnique({
+      where: { id },
+      include: { chat: { select: { titleSource: true } } },
+    });
+    return run && isActive(run.status) ? run : null;
+  },
+
+  /** First text arrived: thinking → working. Never undoes a Stop. */
+  markWorking: (id: string, db: DbClient = prisma) =>
+    db.agentRun.updateMany({
+      where: { id, status: RunStatus.thinking },
+      data: { status: RunStatus.working },
+    }),
+
+  /** Ends an active run and fills its assistant message; false if the run had already ended. */
+  async settle(run: AgentRun, end: RunEnd, db: DbClient = prisma) {
+    const now = new Date();
+    const error = { errorCode: end.error?.code, errorMessage: end.error?.message };
+    const { count } = await db.agentRun.updateMany({
+      where: { id: run.id, status: { in: ACTIVE } },
+      data: {
+        status: end.status,
+        routedModel: end.routedModel,
+        thinkingMs: end.thinkingMs,
+        finishedAt: now,
+        ...error,
+      },
+    });
+    if (count === 0) return false;
+    await db.message.update({
+      where: { id: run.assistantMessageId },
+      data: {
+        status: MESSAGE_STATUS[end.status],
+        contentBlocks: end.blocks,
+        text: end.text,
+        runId: run.id,
+        tokenUsage: end.tokenUsage,
+        routedModel: end.routedModel,
+        completedAt: now,
+        ...error,
+      },
+    });
+    return true;
   },
 };
 

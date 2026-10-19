@@ -78,6 +78,29 @@ export const chatRepository = {
       update: {},
     }),
 
+  /** The model's context: the last `limit` settled user/assistant messages, oldest first. */
+  async history(chatId: string, limit: number, db: DbClient = prisma) {
+    const rows = await db.message.findMany({
+      where: {
+        chatId,
+        role: { in: [MessageRole.user, MessageRole.assistant] },
+        status: MessageStatus.success,
+        text: { not: "" },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit,
+      select: { role: true, text: true },
+    });
+    return rows.reverse();
+  },
+
+  /** AI title, only while the chat still has its prompt title: a user rename always wins. */
+  setGeneratedTitle: (id: string, title: string, db: DbClient = prisma) =>
+    db.chat.updateMany({
+      where: { id, titleSource: TitleSource.prompt },
+      data: { title, titleSource: TitleSource.generated },
+    }),
+
   /** New activity moves the chat to the top of the sidebar. */
   touch: (id: string, db: DbClient = prisma) =>
     db.chat.update({ where: { id }, data: { updatedAt: new Date() } }),

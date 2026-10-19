@@ -21,7 +21,7 @@ async function owned(chatId: string, userId: string) {
   return chat;
 }
 
-const truncateTitle = (text: string, max: number) =>
+export const truncateTitle = (text: string, max: number) =>
   text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
 
 export const chatService = {
