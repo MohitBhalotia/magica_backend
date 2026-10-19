@@ -1,5 +1,6 @@
 export * from "./blocks.ts";
 export * from "./chat.ts";
+export * from "./credits.ts";
 export * from "./errors.ts";
 export * from "./health.ts";
 export * from "./models.ts";

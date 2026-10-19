@@ -52,6 +52,11 @@ const RunSchema = z.looseObject({
 });
 export type MagicaRun = z.infer<typeof RunSchema>;
 
+/** `POST /nodes/estimate-credits`: one estimate per node sent, in order. */
+const EstimateSchema = z.object({
+  estimates: z.array(z.object({ microcredits: z.number() })).min(1),
+});
+
 /** Magica's error body: `{ error, message, code, traceId }`, any of which may be missing. */
 const ErrorBodySchema = z
   .object({ message: z.string().optional(), traceId: z.string().optional() })
@@ -168,6 +173,16 @@ export const magica = {
         webhook: { url: webhookUrl, events: ["run.completed", "run.failed", "run.canceled"] },
       },
     }),
+
+  /** What a run would cost, in microcredits. Free; it can fail for some inputs (seen for merges). */
+  async estimate(job: MagicaJob, signal?: AbortSignal) {
+    const node = { type: job.nodeType, subModelId: job.subModelId, data: job.input };
+    const { estimates } = await request("/nodes/estimate-credits", EstimateSchema, {
+      signal,
+      body: { nodes: [node] },
+    });
+    return estimates[0]?.microcredits ?? 0;
+  },
 
   /** A run's current status and output, read with our key: the only result we trust. */
   getRun: (runId: string, signal?: AbortSignal) =>
