@@ -251,6 +251,15 @@ sequenceDiagram
   B->>A: on terminal status → invalidate queries → render persisted message
 ```
 
+**Frontend realtime (as built in M2).** `useLiveTurn` (frontend `src/features/chat/useLiveTurn.ts`)
+reads the run's `ui` stream with `useRealtimeStream` (throttled to 50 ms) and folds the chunks
+into one `UIMessage` with the AI SDK's `readUIMessageStream`. The stream always replays from its
+start, so a reload rebuilds the same message with no gap and no duplicates (no `lastEventId` is
+kept). The stream stays open ~60 s after the run ends, so the end of a turn comes from the run
+status (`useRealtimeRun` `onComplete`), not from the stream closing. On completion the chat and
+chat list are refetched, and the saved message from Postgres replaces the live one; a first reply
+also triggers bounded refetches at 3/10/25 s to pick up the AI title.
+
 ---
 
 ## 6. Data & state management
