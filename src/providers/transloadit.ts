@@ -51,8 +51,6 @@ export function uploadOptions(input: { attachmentId: string; key: string; notify
         use: "accepted",
         credentials: R2_CREDENTIALS,
         path: input.key,
-        // Without this the stored file is left out of the job's status.
-        result: true,
       },
     },
     fields: { attachment_id: input.attachmentId },

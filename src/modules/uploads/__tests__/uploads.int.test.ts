@@ -56,13 +56,16 @@ async function ready() {
   return attachment.id;
 }
 
-/** A finished Transloadit job for `attachmentId`, as the webhook or the status API reports it. */
-const completed = (attachmentId: string, stored = true): Assembly => ({
+/**
+ * A finished Transloadit job for `attachmentId`, shaped like a real one (2026-10-19): the filter
+ * step lists the file it accepted; the R2 store step never appears in `results`.
+ */
+const completed = (attachmentId: string, accepted = true): Assembly => ({
   assembly_id: `asm_${randomUUID()}`,
   ok: "ASSEMBLY_COMPLETED",
   fields: { attachment_id: attachmentId },
-  results: stored
-    ? { stored: [{ size: 1_153_434, mime: "image/png", meta: { width: 1024, height: 768 } }] }
+  results: accepted
+    ? { accepted: [{ size: 1_153_434, mime: "image/png", meta: { width: 1024, height: 768 } }] }
     : {},
 });
 
@@ -75,6 +78,19 @@ describe("uploads", () => {
       fields: { attachment_id: attachment.id },
     });
     expect(assemblyOptions.signature).toMatch(/^sha256:[0-9a-f]{64}$/);
+  });
+
+  it("retrying a failed upload starts it again on the same row", async () => {
+    const file = photo();
+    const { attachment } = await uploadService.create(userId, file, NOTIFY);
+    await uploadService.settle({ ...completed(attachment.id), ok: undefined, error: "X" });
+
+    const again = await uploadService.create(userId, file, NOTIFY);
+    expect(again.attachment).toMatchObject({ id: attachment.id, status: "uploading", error: null });
+
+    await uploadService.settle(completed(attachment.id));
+    const row = await db.attachment.findUniqueOrThrow({ where: { id: attachment.id } });
+    expect(row.status).toBe("ready");
   });
 
   it("the same file twice is one upload", async () => {
@@ -205,7 +221,7 @@ describe("uploads", () => {
 
     await uploadService.settle({
       ...completed(attachment.id),
-      results: { stored: [{ meta: { width: 640, height: 360, duration: 20.022 } }] },
+      results: { accepted: [{ meta: { width: 640, height: 360, duration: 20.022 } }] },
     });
     const row = await db.attachment.findUniqueOrThrow({ where: { id: attachment.id } });
     expect(row).toMatchObject({ kind: "video", status: "ready", durationMs: 20022 });

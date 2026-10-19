@@ -28,7 +28,6 @@ describe("uploadOptions", () => {
       use: "accepted",
       credentials: "magica-uploads",
       path: "uploads/user_1/att_1",
-      result: true,
     });
     expect(params.fields).toEqual({ attachment_id: "att_1" });
     expect(params.notify_url).toBe("https://api.test/api/webhooks/transloadit");
