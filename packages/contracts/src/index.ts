@@ -1,6 +1,7 @@
 export * from "./apiKeys.ts";
 export * from "./blocks.ts";
 export * from "./chat.ts";
+export * from "./completions.ts";
 export * from "./credits.ts";
 export * from "./errors.ts";
 export * from "./health.ts";
