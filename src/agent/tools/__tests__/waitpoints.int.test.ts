@@ -130,6 +130,21 @@ describe("ask_user", () => {
   });
 });
 
+describe("Stop", () => {
+  it("cancels the pending question and stops waiting at once", async () => {
+    const stop = new AbortController();
+    ctx = { ...ctx, signal: stop.signal };
+    whileWaiting = () => {
+      stop.abort();
+      return new Promise(() => undefined); // the user never answers
+    };
+
+    await expect(call("ask_user", question)).rejects.toMatchObject({ name: "AbortError" });
+    const waitpoint = await db.waitpoint.findFirstOrThrow({ where: { runId: ctx.runId } });
+    expect(waitpoint.status).toBe("cancelled");
+  });
+});
+
 describe("propose_plan", () => {
   it("a rejected plan comes back with the user's feedback", async () => {
     whileWaiting = userAnswers({ approved: false, feedback: "Skip the crop" });
@@ -176,6 +191,35 @@ describe("credit approval", () => {
     expect(
       await db.creditLedger.count({ where: { runId: ctx.runId, invocationId: { not: null } } }),
     ).toBe(0);
+  });
+
+  it("an unknown cost asks too, and an approved run goes ahead", async () => {
+    const runs: unknown[] = [];
+    server.use(
+      http.post(`${MAGICA}/nodes/estimate-credits`, () =>
+        HttpResponse.json({ error: "Internal Server Error" }, { status: 500 }),
+      ),
+      http.post(`${MAGICA}/nodes/gpt_image_2/run`, () => {
+        runs.push(1);
+        return HttpResponse.json({ runId: `mr_${randomUUID()}` }, { status: 202 });
+      }),
+      http.get(`${MAGICA}/nodes/runs/:id`, ({ params }) =>
+        HttpResponse.json({
+          id: params.id,
+          status: "COMPLETED",
+          output: { result: ["https://g.tlcdn.com/gen/a.png"] },
+          creditUsed: 7_644,
+        }),
+      ),
+    );
+    whileWaiting = async () => {
+      const waitpoint = await db.waitpoint.findFirstOrThrow({ where: { runId: ctx.runId } });
+      expect(waitpoint.request).toMatchObject({ estimateMicro: null });
+      return userAnswers({ approved: true })();
+    };
+
+    await call("gpt_image_2", { mode: "text", prompt: "a red apple" });
+    expect(runs).toHaveLength(1);
   });
 
   it("a cheap run doesn't ask", async () => {
