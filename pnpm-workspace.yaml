@@ -13,3 +13,9 @@ overrides:
   # GHSA-96hv-2xvq-fx4p (high, memory-exhaustion DoS) via @trigger.dev/sdk → socket.io-client.
   # shortcut: drop once @trigger.dev/core ships a patched ws itself.
   ws@<8.21.0: ^8.21.0
+
+# @openrouter/ai-sdk-provider 3.1.0 leaves a stream's `reader.cancel()` rejection unhandled, so Stop
+# mid-answer crashed the Trigger.dev worker (TASK_RUN_UNCAUGHT_EXCEPTION) and the run never ended.
+# shortcut: drop once the provider handles that rejection itself.
+patchedDependencies:
+  "@openrouter/ai-sdk-provider@3.1.0": patches/@openrouter__ai-sdk-provider@3.1.0.patch
