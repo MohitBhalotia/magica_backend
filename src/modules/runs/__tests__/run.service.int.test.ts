@@ -11,8 +11,11 @@ import { chatService } from "@/modules/chats/chat.service";
 import { runRepository } from "@/modules/runs/run.repository";
 import { runService } from "@/modules/runs/run.service";
 
+const { fakeTrigger } = vi.hoisted(() => ({
+  fakeTrigger: (_id: string, p: { runId?: string }) => Promise.resolve({ id: `trig_${p.runId}` }),
+}));
 vi.mock("@trigger.dev/sdk", () => ({
-  tasks: { trigger: vi.fn((_id: string, p: { runId: string }) => ({ id: `trig_${p.runId}` })) },
+  tasks: { trigger: vi.fn(fakeTrigger) },
   auth: { createPublicToken: vi.fn(() => "pk_test") },
   runs: { cancel: vi.fn() },
 }));
@@ -40,6 +43,37 @@ describe("send", () => {
       expect.objectContaining({ idempotencyKey: sent.run.runId, concurrencyKey: user }),
     );
     expect(sent.run.triggerRunId).toBe(`trig_${sent.run.runId}`);
+  });
+
+  it("starts chat-title with the first message only, keyed by chat id", async () => {
+    const user = newUser();
+    const clientMessageId = randomUUID();
+    const sent = await chatService.create(user, clientMessageId, "hello", ctx);
+    await chatService.create(user, clientMessageId, "hello", ctx); // replay: same key, one run
+    await finish(sent.run.runId, "completed");
+    await followUp(sent.chatId, user);
+    const title = [
+      "chat-title",
+      { chatId: sent.chatId },
+      expect.objectContaining({ idempotencyKey: `title:${sent.chatId}` }),
+    ];
+    const calls = vi.mocked(tasks.trigger).mock.calls.filter(([id]) => id === "chat-title");
+    expect(calls).toEqual([title, title]);
+  });
+
+  it("still sends when chat-title can't be started", async () => {
+    const trigger = vi.mocked(tasks.trigger);
+    trigger.mockImplementation(((id: string, p: { runId?: string }) =>
+      id === "chat-title"
+        ? Promise.reject(new Error("trigger down"))
+        : fakeTrigger(id, p)) as never);
+    try {
+      const sent = await first(newUser());
+      expect(sent.run.triggerRunId).toBe(`trig_${sent.run.runId}`);
+      expect(trigger).toHaveBeenCalledWith("chat-title", expect.anything(), expect.anything());
+    } finally {
+      trigger.mockImplementation(fakeTrigger as never);
+    }
   });
 
   it("a follow-up while a reply is running is RUN_ACTIVE and stores nothing", async () => {

@@ -8,7 +8,6 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { chatService } from "@/modules/chats/chat.service";
 import { agentTurn } from "@/trigger/agentTurn.task";
-import { chatTitle } from "@/trigger/chatTitle.task";
 
 const mocks = vi.hoisted(() => ({ doStream: vi.fn() }));
 
@@ -38,9 +37,6 @@ vi.mock("@/providers/openrouter", () => ({
 
 type Run = (payload: { runId: string }, ctx: { signal: AbortSignal }) => Promise<unknown>;
 const run = (agentTurn as unknown as { run: Run }).run;
-const titleTrigger = vi.mocked(
-  (chatTitle as unknown as { trigger: () => Promise<unknown> }).trigger,
-);
 
 const answer = (text: string) => ({
   stream: simulateReadableStream({
@@ -74,7 +70,7 @@ beforeEach(() => {
 });
 
 describe("agent-turn", () => {
-  it("answers, saves the message and run, and asks for an AI title", async () => {
+  it("answers and saves the message and run", async () => {
     mocks.doStream.mockResolvedValue(answer("Hi there"));
     const sent = await send();
 
@@ -87,7 +83,6 @@ describe("agent-turn", () => {
       tokenUsage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 },
     });
     expect(await runRow(sent.run.runId)).toMatchObject({ status: "completed" });
-    expect(titleTrigger).toHaveBeenCalledWith({ chatId: sent.chatId });
   });
 
   it("a provider failure saves a safe error and fails the task", async () => {
@@ -107,7 +102,6 @@ describe("agent-turn", () => {
     expect(saved).toMatchObject({ status: "failed", errorCode: "PROVIDER_AUTH" });
     expect(saved.errorMessage).not.toContain("sk-or");
     expect(await runRow(sent.run.runId)).toMatchObject({ status: "failed" });
-    expect(titleTrigger).not.toHaveBeenCalled();
   });
 
   it("a stopped turn is saved as cancelled without failing the task", async () => {

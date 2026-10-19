@@ -5,6 +5,7 @@ import { AppError } from "@/lib/errors";
 import type { Logger } from "@/lib/logger";
 import { chatRepository } from "@/modules/chats/chat.repository";
 import { runService } from "@/modules/runs/run.service";
+import { runTask } from "@/modules/runs/run.task";
 import { userService } from "@/modules/users/user.service";
 
 type Ctx = { traceId: string; logger: Logger };
@@ -53,7 +54,17 @@ export const chatService = {
         tx,
       );
     });
-    return runService.respond(run, ctx);
+    // The AI title runs alongside the reply; if it can't start, the prompt title stays.
+    const [sent] = await Promise.all([
+      runService.respond(run, ctx),
+      runTask.title(run.chatId).catch((err: unknown) => {
+        ctx.logger.warn(
+          { err, chatId: run.chatId },
+          "chat-title trigger failed; prompt title stays",
+        );
+      }),
+    ]);
+    return sent;
   },
 
   /** Follow-up message in an existing chat; RUN_ACTIVE while a reply is still in progress. */

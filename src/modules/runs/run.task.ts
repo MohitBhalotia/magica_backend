@@ -18,6 +18,15 @@ export const runTask = {
     return handle.id;
   },
 
+  /** Starts `chat-title` for a new chat. Idempotent by chat id, so a replayed send adds no run. */
+  async title(chatId: string) {
+    await tasks.trigger(
+      "chat-title",
+      { chatId },
+      { idempotencyKey: `title:${chatId}`, tags: [`chat_${chatId}`] },
+    );
+  },
+
   /** Asks Trigger.dev to stop the task; its onCancel hook persists the partial answer. */
   cancel: (triggerRunId: string) => runs.cancel(triggerRunId),
 
