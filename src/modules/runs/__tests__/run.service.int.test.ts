@@ -1,0 +1,133 @@
+import { randomUUID } from "node:crypto";
+
+import { runs, tasks } from "@trigger.dev/sdk";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { db } from "@/lib/db";
+import type { AppError } from "@/lib/errors";
+import { logger } from "@/lib/logger";
+import { chatService } from "@/modules/chats/chat.service";
+import { runService } from "@/modules/runs/run.service";
+
+vi.mock("@trigger.dev/sdk", () => ({
+  tasks: { trigger: vi.fn((_id: string, p: { runId: string }) => ({ id: `trig_${p.runId}` })) },
+  auth: { createPublicToken: vi.fn(() => "pk_test") },
+  runs: { cancel: vi.fn() },
+}));
+
+const newUser = () => `user_test_${randomUUID()}`;
+const ctx = { traceId: "t", logger };
+const first = (userId: string) => chatService.create(userId, randomUUID(), "hello", ctx);
+const followUp = (chatId: string, userId: string) =>
+  chatService.send(chatId, userId, randomUUID(), "and then?", ctx);
+const finish = (runId: string, status: "completed" | "failed" | "cancelled") =>
+  db.agentRun.update({ where: { id: runId }, data: { status } });
+const code = (c: string) => expect.objectContaining({ code: c }) as unknown as AppError;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe("send", () => {
+  it("dispatches agent-turn once per run with the run id as idempotency key", async () => {
+    const user = newUser();
+    const sent = await first(user);
+    expect(tasks.trigger).toHaveBeenCalledWith(
+      "agent-turn",
+      { runId: sent.run.runId },
+      expect.objectContaining({ idempotencyKey: sent.run.runId, concurrencyKey: user }),
+    );
+    expect(sent.run.triggerRunId).toBe(`trig_${sent.run.runId}`);
+  });
+
+  it("a follow-up while a reply is running is RUN_ACTIVE and stores nothing", async () => {
+    const user = newUser();
+    const { chatId, run } = await first(user);
+    await expect(followUp(chatId, user)).rejects.toEqual(code("RUN_ACTIVE"));
+    const { messages, activeRun } = await chatService.get(chatId, user);
+    expect(messages.items).toHaveLength(2); // no orphan user message
+    expect(activeRun?.runId).toBe(run.runId);
+  });
+
+  it("a follow-up after the reply finished starts a new run", async () => {
+    const user = newUser();
+    const sent = await first(user);
+    await finish(sent.run.runId, "completed");
+    const next = await followUp(sent.chatId, user);
+    expect(next.run.runId).not.toBe(sent.run.runId);
+    expect((await chatService.get(sent.chatId, user)).messages.items).toHaveLength(4);
+  });
+
+  it("leaves the run queued when dispatch fails, and a replay dispatches it", async () => {
+    const user = newUser();
+    const clientMessageId = randomUUID();
+    vi.mocked(tasks.trigger).mockRejectedValueOnce(new Error("trigger down"));
+    const failed = await chatService.create(user, clientMessageId, "hi", ctx);
+    expect(failed.run).toMatchObject({
+      status: "queued",
+      triggerRunId: null,
+      publicAccessToken: null,
+    });
+    const replay = await chatService.create(user, clientMessageId, "hi", ctx);
+    expect(replay.run).toMatchObject({
+      runId: failed.run.runId,
+      triggerRunId: `trig_${failed.run.runId}`,
+    });
+  });
+});
+
+describe("cancel", () => {
+  it("a dispatched run moves to stopping and Trigger.dev is told to cancel it", async () => {
+    const user = newUser();
+    const { run } = await first(user);
+    const stopped = await runService.cancel(run.runId, user, ctx);
+    expect(stopped.status).toBe("stopping");
+    expect(runs.cancel).toHaveBeenCalledWith(run.triggerRunId);
+  });
+
+  it("an undispatched run is cancelled right away; cancelling again is a no-op", async () => {
+    const user = newUser();
+    vi.mocked(tasks.trigger).mockRejectedValueOnce(new Error("trigger down"));
+    const { run } = await first(user);
+    expect((await runService.cancel(run.runId, user, ctx)).status).toBe("cancelled");
+    expect((await runService.cancel(run.runId, user, ctx)).status).toBe("cancelled");
+    expect(runs.cancel).not.toHaveBeenCalled();
+  });
+});
+
+describe("retry", () => {
+  it("retries the latest failed reply with a new run on the same user message", async () => {
+    const user = newUser();
+    const sent = await first(user);
+    await finish(sent.run.runId, "failed");
+    const retried = await runService.retry(sent.run.runId, user, ctx);
+    expect(retried.userMessageId).toBe(sent.userMessageId);
+    expect(retried.run.runId).not.toBe(sent.run.runId);
+    expect(retried.assistantMessageId).not.toBe(sent.assistantMessageId);
+  });
+
+  it("refuses a completed reply, or one that isn't the latest", async () => {
+    const user = newUser();
+    const sent = await first(user);
+    await finish(sent.run.runId, "completed");
+    await expect(runService.retry(sent.run.runId, user, ctx)).rejects.toEqual(
+      code("VALIDATION_FAILED"),
+    );
+    const next = await followUp(sent.chatId, user);
+    await finish(next.run.runId, "failed");
+    await finish(sent.run.runId, "failed");
+    await expect(runService.retry(sent.run.runId, user, ctx)).rejects.toEqual(
+      code("VALIDATION_FAILED"),
+    );
+  });
+});
+
+describe("ownership", () => {
+  it("someone else's chat or run is NOT_FOUND", async () => {
+    const [owner, other] = [newUser(), newUser()];
+    const { chatId, run } = await first(owner);
+    await expect(followUp(chatId, other)).rejects.toEqual(code("NOT_FOUND"));
+    await expect(runService.cancel(run.runId, other, ctx)).rejects.toEqual(code("NOT_FOUND"));
+    await expect(runService.retry(run.runId, other, ctx)).rejects.toEqual(code("NOT_FOUND"));
+  });
+});

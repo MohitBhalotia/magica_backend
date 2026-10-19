@@ -58,20 +58,29 @@ export const chatRepository = {
       },
       update: {},
     });
-    const message = await db.message.upsert({
-      where: { chatId_clientMessageId: { chatId: chat.id, clientMessageId: data.id } },
-      create: {
-        chatId: chat.id,
-        userId: chat.userId,
-        role: MessageRole.user,
-        status: MessageStatus.success,
-        text: data.text,
-        clientMessageId: data.id,
-      },
-      update: {},
-    });
+    const message = await chatRepository.upsertUserMessage(
+      { chatId: chat.id, userId: chat.userId, clientMessageId: data.id, text: data.text },
+      db,
+    );
     return { chat, message };
   },
+
+  /** A user message, idempotent per `(chatId, clientMessageId)`: a retried send returns the same row. */
+  upsertUserMessage: (
+    data: { chatId: string; userId: string; clientMessageId: string; text: string },
+    db: DbClient = prisma,
+  ) =>
+    db.message.upsert({
+      where: {
+        chatId_clientMessageId: { chatId: data.chatId, clientMessageId: data.clientMessageId },
+      },
+      create: { ...data, role: MessageRole.user, status: MessageStatus.success },
+      update: {},
+    }),
+
+  /** New activity moves the chat to the top of the sidebar. */
+  touch: (id: string, db: DbClient = prisma) =>
+    db.chat.update({ where: { id }, data: { updatedAt: new Date() } }),
 
   /** `updatedAt` is passed through so renaming or pinning doesn't reorder the sidebar. */
   update: (
@@ -91,12 +100,20 @@ export const chatRepository = {
   softDelete: (id: string, db: DbClient = prisma) =>
     db.chat.update({ where: { id }, data: { deletedAt: new Date() } }),
 
-  /** Copies the chat and its messages (not runs); messages keep their timestamps and order. */
+  /**
+   * Copies the chat and its settled messages (not runs, not a reply still being written); messages
+   * keep their timestamps and order.
+   */
   async duplicate(source: { id: string; userId: string; title: string }, db: DbClient = prisma) {
     const copy = await db.chat.create({
       data: { userId: source.userId, title: source.title, titleSource: TitleSource.user },
     });
-    const messages = await db.message.findMany({ where: { chatId: source.id } });
+    const messages = await db.message.findMany({
+      where: {
+        chatId: source.id,
+        status: { notIn: [MessageStatus.pending, MessageStatus.streaming] },
+      },
+    });
     await db.message.createMany({
       data: messages.map((m) => ({
         chatId: copy.id,

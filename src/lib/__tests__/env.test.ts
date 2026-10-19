@@ -11,6 +11,7 @@ const api = {
   FRONTEND_ORIGINS: "http://localhost:3000",
   UPSTASH_REDIS_URL: "https://x.upstash.io",
   UPSTASH_REDIS_TOKEN: "t",
+  TRIGGER_SECRET_KEY: "tr_test_x",
 };
 const worker = { ...db, OPENROUTER_API_KEY: "sk-or-x" };
 

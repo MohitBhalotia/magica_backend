@@ -15,6 +15,8 @@ export const EnvSchema = CoreEnvSchema.extend({
   // Upstash REST endpoint: rate-limit counters only (DEC-006).
   UPSTASH_REDIS_URL: z.url(),
   UPSTASH_REDIS_TOKEN: z.string().min(1),
+  // Read by @trigger.dev/sdk to dispatch `agent-turn` and mint run tokens; validated so boot fails early.
+  TRIGGER_SECRET_KEY: z.string().startsWith("tr_"),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

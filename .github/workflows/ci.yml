@@ -24,6 +24,7 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
       UPSTASH_REDIS_URL: https://ci.upstash.io
       UPSTASH_REDIS_TOKEN: ci
+      TRIGGER_SECRET_KEY: tr_ci
       TRIGGER_PROJECT_REF: proj_ci
     steps:
       - uses: actions/checkout@v7

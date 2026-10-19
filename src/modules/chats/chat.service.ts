@@ -1,9 +1,13 @@
-import { MAX_TITLE_LENGTH } from "@mohitbhalotia/magica-contracts";
+import { MAX_TITLE_LENGTH, type SendResponse } from "@mohitbhalotia/magica-contracts";
 
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
+import type { Logger } from "@/lib/logger";
 import { chatRepository } from "@/modules/chats/chat.repository";
+import { runService } from "@/modules/runs/run.service";
 import { userService } from "@/modules/users/user.service";
+
+type Ctx = { traceId: string; logger: Logger };
 
 const MESSAGES_PER_PAGE = 50;
 /** Auto-titles from the first prompt stay short; renames may use the full MAX_TITLE_LENGTH. */
@@ -26,11 +30,21 @@ export const chatService = {
 
   async get(chatId: string, userId: string, cursor?: string) {
     const chat = await owned(chatId, userId);
-    return { chat, messages: await chatRepository.messages(chat.id, MESSAGES_PER_PAGE, cursor) };
+    const [messages, activeRun] = await Promise.all([
+      chatRepository.messages(chat.id, MESSAGES_PER_PAGE, cursor),
+      runService.activeHandle(chat.id),
+    ]);
+    return { chat, messages, activeRun };
   },
 
-  async create(userId: string, clientMessageId: string, text: string) {
-    const { chat, message } = await db.$transaction(async (tx) => {
+  /** First message: chat + user message + the run that answers it, in one transaction. */
+  async create(
+    userId: string,
+    clientMessageId: string,
+    text: string,
+    ctx: Ctx,
+  ): Promise<SendResponse> {
+    const { chat, message, run } = await db.$transaction(async (tx) => {
       await userService.ensure(userId, tx);
       const data = {
         id: clientMessageId,
@@ -38,11 +52,51 @@ export const chatService = {
         title: truncateTitle(text, PROMPT_TITLE_LENGTH),
         text,
       };
-      return chatRepository.createWithMessage(data, tx);
+      const created = await chatRepository.createWithMessage(data, tx);
+      // Only on a client-id collision with another user's chat; same 404 as any foreign chat.
+      if (created.chat.userId !== userId) throw notFound();
+      const opened = await runService.open(
+        {
+          chatId: created.chat.id,
+          userId,
+          userMessageId: created.message.id,
+          traceId: ctx.traceId,
+        },
+        tx,
+      );
+      return { ...created, run: opened };
     });
-    // Only on a client-id collision with another user's chat; same 404 as any foreign chat.
-    if (chat.userId !== userId) throw notFound();
-    return { chatId: chat.id, userMessageId: message.id };
+    return {
+      chatId: chat.id,
+      userMessageId: message.id,
+      assistantMessageId: run.assistantMessageId,
+      run: await runService.dispatch(run, ctx),
+    };
+  },
+
+  /** Follow-up message in an existing chat; RUN_ACTIVE while a reply is still in progress. */
+  async send(chatId: string, userId: string, clientMessageId: string, text: string, ctx: Ctx) {
+    const chat = await owned(chatId, userId);
+    const { message, run } = await runService.withRunLock(chat.id, () =>
+      db.$transaction(async (tx) => {
+        const msg = await chatRepository.upsertUserMessage(
+          { chatId: chat.id, userId, clientMessageId, text },
+          tx,
+        );
+        await chatRepository.touch(chat.id, tx);
+        const opened = await runService.open(
+          { chatId: chat.id, userId, userMessageId: msg.id, traceId: ctx.traceId },
+          tx,
+        );
+        return { message: msg, run: opened };
+      }),
+    );
+    return {
+      chatId: chat.id,
+      userMessageId: message.id,
+      assistantMessageId: run.assistantMessageId,
+      run: await runService.dispatch(run, ctx),
+    } satisfies SendResponse;
   },
 
   async update(chatId: string, userId: string, patch: { title?: string; isPinned?: boolean }) {

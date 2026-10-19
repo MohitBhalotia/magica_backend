@@ -73,10 +73,6 @@ export const SendMessageRequestSchema = z.object({
 });
 export type SendMessageRequest = z.infer<typeof SendMessageRequestSchema>;
 
-// M1 response of `POST /chats`; removed once that endpoint returns SendResponse (M2 B4).
-export const CreateChatResponseSchema = z.object({ chatId: z.string(), userMessageId: z.string() });
-export type CreateChatResponse = z.infer<typeof CreateChatResponseSchema>;
-
 /** Both sends: the new messages plus the run that answers them. */
 export const SendResponseSchema = z.object({
   chatId: z.string(),
