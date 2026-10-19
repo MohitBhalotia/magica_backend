@@ -11,6 +11,10 @@ const Pixels = z.int().min(0);
 const PERCENT_FIELDS = ["x_percent", "y_percent", "width_percent", "height_percent"] as const;
 const PIXEL_FIELDS = ["x_px", "y_px", "width_px", "height_px"] as const;
 
+const ONE_FORM =
+  "Use exactly one form: the *_percent fields, width_px and height_px (x_px/y_px optional), " +
+  "or crop {x, y, width, height}.";
+
 /** Field names are Magica's, so its validation messages make sense to the model. */
 const CropInput = z
   .object({
@@ -23,13 +27,22 @@ const CropInput = z
     y_px: Pixels.optional(),
     width_px: Pixels.min(1).optional(),
     height_px: Pixels.min(1).optional(),
+    /** Magica's third form (brief): a pixel rectangle as one object. */
+    crop: z
+      .object({
+        x: Pixels.optional(),
+        y: Pixels.optional(),
+        width: Pixels.min(1),
+        height: Pixels.min(1),
+      })
+      .optional(),
   })
-  .refine((crop) => {
-    const percent = PERCENT_FIELDS.some((field) => crop[field] !== undefined);
-    const pixels = PIXEL_FIELDS.some((field) => crop[field] !== undefined);
-    if (percent) return !pixels;
-    return crop.width_px !== undefined && crop.height_px !== undefined;
-  }, "Use exactly one form: the *_percent fields, or width_px and height_px (x_px/y_px optional).");
+  .refine((input) => {
+    const percent = PERCENT_FIELDS.some((field) => input[field] !== undefined);
+    const pixels = PIXEL_FIELDS.some((field) => input[field] !== undefined);
+    if ([percent, pixels, input.crop !== undefined].filter(Boolean).length !== 1) return false;
+    return !pixels || (input.width_px !== undefined && input.height_px !== undefined);
+  }, ONE_FORM);
 
 /** crop_image's output (docs/research/magica-raw/runs/crop_image.run.json). */
 const CropOutput = z.object({ image_url: z.url(), width: z.number(), height: z.number() });
@@ -37,7 +50,8 @@ const CropOutput = z.object({ image_url: z.url(), width: z.number(), height: z.n
 export const cropImageTool = defineTool({
   name: "crop_image",
   description:
-    "Crop an image (public HTTPS URL) by percent or by pixels. Load the crop-image skill first.",
+    "Crop an image (public HTTPS URL) by percent, by pixels, or by a crop {x, y, width, height} " +
+    "rectangle. Load the crop-image skill first.",
   input: CropInput,
   output: MediaToolOutputSchema,
   execute: (input, ctx) =>

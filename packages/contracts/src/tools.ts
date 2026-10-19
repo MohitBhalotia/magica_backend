@@ -43,6 +43,20 @@ export const MediaToolOutputSchema = z.object({
 });
 export type MediaToolOutput = z.infer<typeof MediaToolOutputSchema>;
 
+/** The Magica tools the public API can run directly: `POST /tools/{tool}/run` (PRD §6.8). */
+export const RUNNABLE_TOOLS = ["crop_image", "gpt_image_2", "merge_videos"] as const;
+export type RunnableTool = (typeof RUNNABLE_TOOLS)[number];
+
+/**
+ * `POST /tools/{tool}/run`: the tool's own input (as the agent would pass it), in `chat_id` or a
+ * new chat. Answered with 202 and the run, like a send: poll `GET /runs/{id}` or use webhooks.
+ */
+export const ToolRunRequestSchema = z.object({
+  input: z.record(z.string(), z.unknown()),
+  chat_id: z.string().optional(),
+});
+export type ToolRunRequest = z.infer<typeof ToolRunRequestSchema>;
+
 /** A file in the chat's files modal (DESIGN §4.8): one saved asset, newest first. */
 export const ChatAssetSchema = MediaAssetSchema.extend({
   id: z.string(),
