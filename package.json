@@ -8,7 +8,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --port 4000",
     "trigger:dev": "trigger dev",
     "build": "next build",
     "start": "next start",
@@ -24,7 +24,7 @@
     "contracts:publish": "pnpm contracts:build && pnpm --filter @mohitbhalotia/magica-contracts publish --no-git-checks",
     "openapi": "node scripts/openapi.ts",
     "openapi:check": "node scripts/openapi.ts --check",
-    "docs:dev": "echo \"not yet (M7)\"",
+    "docs:dev": "cd docs && npx -y mint@4.2.988 dev",
     "prepare": "husky",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
