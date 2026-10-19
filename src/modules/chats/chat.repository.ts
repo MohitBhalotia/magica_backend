@@ -41,6 +41,10 @@ export const chatRepository = {
     return page(rows, limit);
   },
 
+  /** One of the user's messages (e.g. a finished reply, for the completions API). */
+  findMessage: (id: string, userId: string, db: DbClient = prisma) =>
+    db.message.findFirst({ where: { id, userId } }),
+
   async messages(chatId: string, limit: number, cursor?: string, db: DbClient = prisma) {
     const rows = await db.message.findMany({
       where: { chatId },

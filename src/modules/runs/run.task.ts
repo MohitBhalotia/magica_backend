@@ -1,4 +1,7 @@
-import { auth, runs, tasks } from "@trigger.dev/sdk";
+import { auth, runs, streams, tasks } from "@trigger.dev/sdk";
+import type { UIMessageChunk } from "ai";
+
+import { UI_STREAM } from "@mohitbhalotia/magica-contracts";
 
 import type { AgentRun } from "../../../prisma/generated/client";
 
@@ -43,6 +46,13 @@ export const runTask = {
     const finishedAt = run.finishedAt?.getTime() ?? 0;
     return run.isCompleted && Date.now() - finishedAt > ENDED_GRACE_MS;
   },
+
+  /**
+   * The run's UI message stream, from its start, for the completions API. A Magica step can be
+   * silent for minutes, so the idle timeout is the API's maximum; `signal` ends the read sooner.
+   */
+  read: (triggerRunId: string, signal: AbortSignal) =>
+    streams.read<UIMessageChunk>(triggerRunId, UI_STREAM, { timeoutInSeconds: 600, signal }),
 
   /** A browser token that can read only this one run, for an hour. */
   token: (triggerRunId: string) =>
