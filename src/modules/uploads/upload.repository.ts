@@ -22,6 +22,13 @@ export const uploadRepository = {
       update: {},
     }),
 
+  /** A failed upload being retried: back to uploading, under a new job. */
+  restart: (id: string, db: DbClient = prisma) =>
+    db.attachment.update({
+      where: { id },
+      data: { status: AttachmentStatus.uploading, error: null, assemblyId: null },
+    }),
+
   findOwned: (id: string, userId: string, db: DbClient = prisma) =>
     db.attachment.findFirst({ where: { id, userId } }),
 

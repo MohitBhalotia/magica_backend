@@ -49,18 +49,20 @@ const startOfMonth = () => {
 
 /**
  * Records what a finished upload job did (from the webhook or a confirm call), once:
- * - stored in R2 → ready, with its size details;
- * - finished but nothing stored (the filter rejected the file) or failed → failed, with a reason;
+ * - the filter accepted the file and the job completed → ready (a failed R2 store fails the whole
+ *   job), with the size details the filter step reports;
+ * - completed with nothing accepted (the filter rejected the file), or failed → failed, with a reason;
  * - still running → nothing yet.
+ * Storage steps never appear in a job's results, so the filter step's entry is what to read.
  */
 async function settle(assembly: Assembly) {
   const attachmentId = assembly.fields.attachment_id;
   const row = typeof attachmentId === "string" ? await uploadRepository.get(attachmentId) : null;
   if (!row) return;
 
-  const stored = assembly.results.stored?.[0];
-  if (assembly.ok === "ASSEMBLY_COMPLETED" && stored) {
-    const { width, height, duration } = stored.meta;
+  const accepted = assembly.results.accepted?.[0];
+  if (assembly.ok === "ASSEMBLY_COMPLETED" && accepted) {
+    const { width, height, duration } = accepted.meta;
     await uploadRepository.markReady(row.id, {
       assemblyId: assembly.assembly_id,
       r2Key: attachmentKey(row.userId, row.id),
@@ -98,7 +100,10 @@ export const uploadService = {
       throw new AppError("UPLOAD_QUOTA_EXCEEDED", "You've reached this month's 5 GB upload limit.");
 
     await userService.ensure(userId);
-    const row = await uploadRepository.create({ userId, kind, ...file });
+    const existing = await uploadRepository.create({ userId, kind, ...file });
+    // Uppy's Retry asks again for the same file: a failed row starts over.
+    const row =
+      existing.status === "failed" ? await uploadRepository.restart(existing.id) : existing;
     return {
       attachment: await toAttachment(row),
       assemblyOptions: uploadOptions({
