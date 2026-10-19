@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import type { ContentBlock, ErrorCode, MessageMetadata } from "@mohitbhalotia/magica-contracts";
 
 import { db as prisma, type DbClient } from "@/lib/db";
@@ -18,6 +20,14 @@ const ACTIVE: RunStatus[] = [
   RunStatus.stopping,
 ];
 
+/** A run started by `POST /tools/{tool}/run`: one call of this tool with this input, no LLM. */
+export const DirectToolSchema = z.object({ tool: z.string(), input: z.unknown() });
+export type DirectTool = z.infer<typeof DirectToolSchema>;
+
+/** The direct tool call a run was started for, if it was (kept in its dispatch payload). */
+export const directToolOf = (run: AgentRun): DirectTool | undefined =>
+  z.object({ direct: DirectToolSchema }).safeParse(run.dispatchPayload).data?.direct;
+
 type NewRun = {
   chatId: string;
   userId: string;
@@ -26,6 +36,7 @@ type NewRun = {
   dispatchKey: string;
   attempt: number;
   traceId: string;
+  direct?: DirectTool;
 };
 
 /** How a turn ended, and the assistant message it leaves behind. */
@@ -89,7 +100,7 @@ export const runRepository = {
    * The assistant placeholder message (`streaming`) and the queued run that will fill it. A second
    * active run on the chat violates `agent_runs_one_active_per_chat` (P2002) — the RUN_ACTIVE lock.
    */
-  async create(data: NewRun, db: DbClient = prisma) {
+  async create({ direct, ...data }: NewRun, db: DbClient = prisma) {
     const assistant = await db.message.create({
       data: {
         chatId: data.chatId,
@@ -98,7 +109,11 @@ export const runRepository = {
         status: MessageStatus.streaming,
       },
     });
-    const dispatchPayload: Prisma.InputJsonObject = { chatId: data.chatId, userId: data.userId };
+    const dispatchPayload = {
+      chatId: data.chatId,
+      userId: data.userId,
+      ...(direct && { direct }),
+    } as Prisma.InputJsonObject;
     return db.agentRun.create({
       data: { ...data, assistantMessageId: assistant.id, dispatchPayload },
     });

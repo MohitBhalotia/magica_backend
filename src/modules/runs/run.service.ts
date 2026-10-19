@@ -6,7 +6,13 @@ import type { Logger } from "@/lib/logger";
 import { chatRepository } from "@/modules/chats/chat.repository";
 import { creditRepository } from "@/modules/credits/credit.repository";
 import { creditService } from "@/modules/credits/credit.service";
-import { isActive, runRepository, type RunEnd } from "@/modules/runs/run.repository";
+import {
+  directToolOf,
+  isActive,
+  runRepository,
+  type DirectTool,
+  type RunEnd,
+} from "@/modules/runs/run.repository";
 import { runTask } from "@/modules/runs/run.task";
 import { toolRepository } from "@/modules/tools/tool.repository";
 import { toWaitpoint, waitpointRepository } from "@/modules/waitpoints/waitpoint.repository";
@@ -94,7 +100,13 @@ async function openRun(data: Parameters<typeof runRepository.findOrCreate>[0], t
 export const runService = {
   /** Inside the send transaction: the run answering this user message (reused on a replay). */
   open: (
-    data: { chatId: string; userId: string; userMessageId: string; traceId: string },
+    data: {
+      chatId: string;
+      userId: string;
+      userMessageId: string;
+      traceId: string;
+      direct?: DirectTool;
+    },
     tx: DbClient,
   ) => openRun({ ...data, dispatchKey: data.userMessageId, attempt: 1 }, tx),
 
@@ -215,6 +227,8 @@ export const runService = {
             dispatchKey: `retry:${run.userMessageId}:${String(attempt)}`,
             attempt,
             traceId: ctx.traceId,
+            // A retried tool run runs the same tool call again.
+            direct: directToolOf(run),
           },
           tx,
         ),

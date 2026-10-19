@@ -43,6 +43,8 @@ type Turn = TurnContext & { calls: number };
 
 export type RegisteredTool = {
   name: ToolName;
+  /** The tool's input schema: `POST /tools/{tool}/run` checks a caller's input against it. */
+  input: z.ZodType;
   forTurn: (turn: Turn) => Tool;
 };
 
@@ -53,6 +55,7 @@ export type RegisteredTool = {
 export function defineTool<I, O>(def: ToolDefinition<I, O>): RegisteredTool {
   return {
     name: def.name,
+    input: def.input,
     forTurn: (turn) =>
       // Typed as unknown for the AI SDK (its types can't follow our generics); the input is
       // re-parsed with the tool's own schema in runToolCall.

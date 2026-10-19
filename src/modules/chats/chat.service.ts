@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import type { Logger } from "@/lib/logger";
 import { chatRepository } from "@/modules/chats/chat.repository";
+import type { DirectTool } from "@/modules/runs/run.repository";
 import { runService } from "@/modules/runs/run.service";
 import { runTask } from "@/modules/runs/run.task";
 import { uploadService } from "@/modules/uploads/upload.service";
@@ -53,6 +54,8 @@ export const chatService = {
     text: string,
     ctx: Ctx,
     attachmentIds: string[] = [],
+    /** Set for `POST /tools/{tool}/run`: the run calls this tool instead of the model. */
+    direct?: DirectTool,
   ) {
     const open = () =>
       db.$transaction(async (tx) => {
@@ -66,7 +69,7 @@ export const chatService = {
         if (chat.userId !== userId) throw notFound();
         await uploadService.attach(userId, message.id, attachmentIds, tx);
         return runService.open(
-          { chatId: chat.id, userId, userMessageId: message.id, traceId: ctx.traceId },
+          { chatId: chat.id, userId, userMessageId: message.id, traceId: ctx.traceId, direct },
           tx,
         );
       });
@@ -98,6 +101,7 @@ export const chatService = {
     text: string,
     ctx: Ctx,
     attachmentIds: string[] = [],
+    direct?: DirectTool,
   ) {
     const chat = await owned(chatId, userId);
     const run = await runService.withRunLock(chat.id, () =>
@@ -109,7 +113,7 @@ export const chatService = {
         await uploadService.attach(userId, message.id, attachmentIds, tx);
         await chatRepository.touch(chat.id, tx);
         return runService.open(
-          { chatId: chat.id, userId, userMessageId: message.id, traceId: ctx.traceId },
+          { chatId: chat.id, userId, userMessageId: message.id, traceId: ctx.traceId, direct },
           tx,
         );
       }),

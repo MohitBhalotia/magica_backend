@@ -1,6 +1,6 @@
 {
   "name": "@mohitbhalotia/magica-contracts",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Zod contracts shared by the Magica backend and frontend",
   "repository": {
     "type": "git",

@@ -11,8 +11,9 @@ import { skillIndex } from "@/agent/tools/skills";
 import { streamTurn, toStored, toTurnError, type TurnEnd } from "@/agent/turn";
 import { AppError } from "@/lib/errors";
 import { chatRepository } from "@/modules/chats/chat.repository";
-import { runRepository } from "@/modules/runs/run.repository";
+import { directToolOf, runRepository } from "@/modules/runs/run.repository";
 import { runService } from "@/modules/runs/run.service";
+import { directTool } from "@/providers/directTool";
 import { openRouterFree } from "@/providers/openrouter";
 import { signedUrl } from "@/providers/r2";
 
@@ -63,18 +64,24 @@ export const agentTurn = schemaTask({
         content: m.text + (await attachedFiles(m.attachments)),
       })),
     );
-    const tools = buildTools(AGENT_TOOLS, {
-      runId: run.id,
-      chatId: run.chatId,
-      userId: run.userId,
-      messageId: run.assistantMessageId,
-      signal,
-    });
+    // `POST /tools/{tool}/run`: just that tool, called with the caller's input, and no LLM.
+    const direct = directToolOf(run);
+    const tools = buildTools(
+      direct ? AGENT_TOOLS.filter((t) => t.name === direct.tool) : AGENT_TOOLS,
+      {
+        runId: run.id,
+        chatId: run.chatId,
+        userId: run.userId,
+        messageId: run.assistantMessageId,
+        signal,
+      },
+    );
     // The model sees only skill names and descriptions; load_skill fetches a body (PRD §5.7).
     const skills = skillCatalog(await skillIndex());
     const instructions = `Skills (call load_skill before the task a skill covers):\n${skills}`;
+    const model = direct ? directTool(direct.tool, direct.input) : openRouterFree();
 
-    const turn = streamTurn({ model: openRouterFree(), messages, tools, instructions, signal });
+    const turn = streamTurn({ model, messages, tools, instructions, signal });
     // If Realtime itself breaks, the stream is never fully read: fail the turn instead of waiting.
     const end = await uiStream
       .pipe(turn.stream)

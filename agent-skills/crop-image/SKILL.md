@@ -10,6 +10,7 @@ description: Coordinate systems, centring and validation rules for crop_image.
 |---|---|---|
 | Percent | `x_percent`, `y_percent`, `width_percent`, `height_percent` (defaults 0, 0, 100, 100) | 0–100 of the image size |
 | Pixels | `width_px`, `height_px` (required), `x_px`, `y_px` (optional) | pixels; without `x_px`/`y_px` the crop is centred |
+| Crop object | `crop: { x, y, width, height }` (`width`, `height` required) | pixels, same as the pixel form |
 
 ## Rules
 - The origin (0, 0) is the **top-left** corner; x grows right, y grows down.
