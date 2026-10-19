@@ -8,6 +8,7 @@ import { creditRepository } from "@/modules/credits/credit.repository";
 import { creditService } from "@/modules/credits/credit.service";
 import { isActive, runRepository, type RunEnd } from "@/modules/runs/run.repository";
 import { runTask } from "@/modules/runs/run.task";
+import { toWaitpoint, waitpointRepository } from "@/modules/waitpoints/waitpoint.repository";
 
 import { Prisma, RunStatus, type AgentRun } from "../../../prisma/generated/client";
 
@@ -21,13 +22,20 @@ async function ownedRun(runId: string, userId: string) {
   return run;
 }
 
-/** What the browser needs to follow the run live. */
-const toHandle = async (run: AgentRun): Promise<RunHandle> => ({
-  runId: run.id,
-  status: run.status,
-  triggerRunId: run.triggerRunId,
-  publicAccessToken: run.triggerRunId ? await runTask.token(run.triggerRunId) : null,
-});
+/** What the browser needs to follow the run live, and the question it's waiting on, if any. */
+async function toHandle(run: AgentRun): Promise<RunHandle> {
+  const [publicAccessToken, waitpoint] = await Promise.all([
+    run.triggerRunId ? runTask.token(run.triggerRunId) : null,
+    run.status === RunStatus.waiting ? waitpointRepository.findPending(run.id) : null,
+  ]);
+  return {
+    runId: run.id,
+    status: run.status,
+    triggerRunId: run.triggerRunId,
+    publicAccessToken,
+    waitpoint: waitpoint && toWaitpoint(waitpoint),
+  };
+}
 
 /** Hands a queued run to Trigger.dev. On failure the run stays queued; a replayed send retries. */
 async function dispatch(run: AgentRun, { logger }: Ctx) {

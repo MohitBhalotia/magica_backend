@@ -65,6 +65,7 @@ beforeEach(async () => {
     messageId: sent.assistantMessageId,
     invocationId: call.id,
     toolCallId: call.toolCallId,
+    toolName: "crop_image",
   };
 });
 

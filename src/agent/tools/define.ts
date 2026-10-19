@@ -20,7 +20,11 @@ export type TurnContext = {
 };
 
 /** What a tool's `execute` receives: the turn, plus the ids of this one call. */
-export type ToolContext = TurnContext & { invocationId: string; toolCallId: string };
+export type ToolContext = TurnContext & {
+  invocationId: string;
+  toolCallId: string;
+  toolName: ToolName;
+};
 
 type ToolDefinition<I, O> = {
   name: ToolName;
@@ -94,7 +98,12 @@ async function runToolCall<I, O>(
   if (call.state === "succeeded") return def.output.parse(call.output);
 
   try {
-    const result = await def.execute(input, { ...turn, invocationId: call.id, toolCallId });
+    const result = await def.execute(input, {
+      ...turn,
+      invocationId: call.id,
+      toolCallId,
+      toolName: def.name,
+    });
     const output = def.output.parse(result);
     await toolRepository.succeed(call, output as Prisma.InputJsonValue);
     return output;

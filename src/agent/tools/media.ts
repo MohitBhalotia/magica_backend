@@ -4,6 +4,7 @@ import type { MediaAsset, MediaToolOutput } from "@mohitbhalotia/magica-contract
 
 import type { ToolContext } from "@/agent/tools/define";
 import { runMagicaModel } from "@/agent/tools/magicaRun";
+import { waitForUser } from "@/agent/tools/waitForUser";
 import { AppError } from "@/lib/errors";
 import { creditService } from "@/modules/credits/credit.service";
 import { toolRepository } from "@/modules/tools/tool.repository";
@@ -21,14 +22,17 @@ type MediaRun<S extends z.ZodType> = {
   prompt?: string;
 };
 
-/** Held when Magica can't estimate a run (DEC-055); M4b asks the user to approve it first. */
-const UNKNOWN_COST_MICRO = 50_000n;
+/** Above this a run needs the user's approval first (DEC-055). */
+const APPROVAL_THRESHOLD_MICRO = 50_000n;
+/** Held for a run whose cost Magica couldn't estimate, once the user approved it. */
+const UNKNOWN_COST_MICRO = APPROVAL_THRESHOLD_MICRO;
 
 /**
  * Runs a media model for the user's credits (PRD §6.6):
- * 1. reserve the estimated cost (402 INSUFFICIENT_CREDITS if the balance can't cover it);
- * 2. run the model and save what it made;
- * 3. charge what Magica actually used and release the reserve, or on any failure (or Stop)
+ * 1. estimate the cost; above the threshold, or unknown, ask the user to approve it first;
+ * 2. reserve the cost (402 INSUFFICIENT_CREDITS if the balance can't cover it);
+ * 3. run the model and save what it made;
+ * 4. charge what Magica actually used and release the reserve, or on any failure (or Stop)
  *    release the reserve only: unfinished work is never charged.
  * Every entry has an idempotency key per call, so a retried call never charges twice.
  */
@@ -37,7 +41,17 @@ export async function runMediaTool<S extends z.ZodType>(
   spec: MediaRun<S>,
 ): Promise<MediaToolOutput> {
   const call = { userId: ctx.userId, runId: ctx.runId, invocationId: ctx.invocationId };
-  await creditService.reserveTool(call, await estimate(spec.job, ctx.signal));
+  const cost = await estimate(spec.job, ctx.signal);
+  if (cost === null || cost > APPROVAL_THRESHOLD_MICRO) {
+    const { approved } = await waitForUser(ctx, "credit_approval", {
+      tool: ctx.toolName,
+      estimateMicro: cost === null ? null : Number(cost),
+      balanceMicro: Number(await creditService.currentBalance(ctx.userId)),
+    });
+    if (!approved)
+      throw new AppError("APPROVAL_DECLINED", "You declined this generation, so it didn't run.");
+  }
+  await creditService.reserveTool(call, cost ?? UNKNOWN_COST_MICRO);
   try {
     const result = await generate(ctx, spec);
     await creditService.chargeTool(call, BigInt(result.creditUsed));
@@ -48,12 +62,13 @@ export async function runMediaTool<S extends z.ZodType>(
   }
 }
 
+/** Magica's estimate in microcredits, or null when it can't give one (seen for some merges). */
 async function estimate(job: MagicaJob, signal?: AbortSignal) {
   try {
     return BigInt(Math.ceil(await magica.estimate(job, signal)));
   } catch (err) {
     if (signal?.aborted) throw err;
-    return UNKNOWN_COST_MICRO;
+    return null;
   }
 }
 
