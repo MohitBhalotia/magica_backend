@@ -35,6 +35,15 @@ function bucket() {
 export const attachmentKey = (userId: string, attachmentId: string) =>
   `uploads/${userId}/${attachmentId}`;
 
+// A signed link up to its query string, which holds the credential and signature.
+const SIGNED_R2_URL = /(https:\/\/[^/\s"\\?]+\.r2\.cloudflarestorage\.com\/[^\s"\\?]*)\?[^\s"\\]*/g;
+
+/** A copy of a JSON value with every signed R2 link cut to its bare path, safe to store and show. */
+export function withoutSignatures<T>(value: T): T {
+  if (value === undefined) return value;
+  return JSON.parse(JSON.stringify(value).replace(SIGNED_R2_URL, "$1")) as T;
+}
+
 /** A short-lived link to a private object; downloads keep the file's original name. */
 export async function signedUrl(key: string, fileName: string) {
   const { env, client } = bucket();
