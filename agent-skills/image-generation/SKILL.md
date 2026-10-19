@@ -6,8 +6,8 @@ description: Prompting, sizes, quality, cost and text-vs-edit guidance for GPT I
 
 ## Text or edit
 - `mode: "text"` creates new images from a prompt.
-- `mode: "edit"` changes existing images: pass 1–10 `uploadedImages` URLs (required) and optionally a
-  `mask`. Describe the change, not the whole image.
+- `mode: "edit"` changes existing images: pass 1–10 public HTTPS `uploadedImages` URLs (required).
+  Describe the change, not the whole image.
 
 ## Prompts
 - Lead with the subject, then setting, style, lighting and composition: "A red apple on a white marble
@@ -17,12 +17,13 @@ description: Prompting, sizes, quality, cost and text-vs-edit guidance for GPT I
 
 ## Size and count
 - Sizes: `Auto`, `1024x1024`, `1536x1024` (landscape), `1024x1536` (portrait), `2048x2048`,
-  `2048x1152`, `3840x2160`, `2160x3840`, or `Custom` with `width`/`height`.
+  `2048x1152`, `3840x2160`, `2160x3840`, or a custom `{ "width": …, "height": … }` object (each side
+  1024–3840 and a multiple of 16; for 1080p use 1920x1088). Prefer a preset.
 - `n` is 1–4. Generate one unless the user asks for options.
 
 ## Quality and cost
-- `quality`: `Low`, `Medium` or `High`. **Default to `Low`**: about 0.008M credits for 1024×1024,
-  while `High` is roughly 35× more. Use `High` only when the user asks for it.
+- `quality`: `Low`, `Medium` or `High`. **Default to `Low`**: about 0.008 credits for 1024×1024,
+  while `High` is about 0.27. Use `High` only when the user asks for it.
 - `output_format`: `PNG` (default), `JPEG` or `WebP`.
 
 ## After generating

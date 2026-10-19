@@ -37,6 +37,8 @@ export default defineConfig({
           globalSetup: ["./vitest.int.setup.ts"],
           setupFiles: ["./vitest.int.env.ts"],
           testTimeout: 30_000,
+          // Setup writes to Neon too, and is as slow as the tests when several files run at once.
+          hookTimeout: 30_000,
         },
       },
     ],

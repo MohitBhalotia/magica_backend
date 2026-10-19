@@ -1,4 +1,7 @@
+import { cropImageTool } from "@/agent/tools/cropImage";
 import type { RegisteredTool } from "@/agent/tools/define";
+import { gptImage2Tool } from "@/agent/tools/gptImage2";
+import { mergeVideosTool } from "@/agent/tools/mergeVideos";
 import { getModelSchemaTool, searchModelsTool } from "@/agent/tools/models";
 import { loadSkillTool, readSkillAssetTool } from "@/agent/tools/skills";
 
@@ -8,4 +11,7 @@ export const AGENT_TOOLS: readonly RegisteredTool[] = [
   readSkillAssetTool,
   searchModelsTool,
   getModelSchemaTool,
+  cropImageTool,
+  gptImage2Tool,
+  mergeVideosTool,
 ];

@@ -4,13 +4,12 @@ description: Coordinate systems, centring and validation rules for crop_image.
 ---
 # Cropping images with crop_image
 
-`crop_image` takes an `image_url` and **exactly one** rectangle form:
+`crop_image` takes a public HTTPS `image_url` and **exactly one** rectangle form:
 
 | Form | Fields | Units |
 |---|---|---|
-| Percent | `x_percent`, `y_percent`, `width_percent`, `height_percent` | 0–100 of the image size |
-| Pixels | `x_px`, `y_px`, `width_px`, `height_px` | pixels from the top-left corner |
-| Crop box | `crop: { x, y, width, height }` | pixels; `width`/`height` without `x`/`y` crops from the centre |
+| Percent | `x_percent`, `y_percent`, `width_percent`, `height_percent` (defaults 0, 0, 100, 100) | 0–100 of the image size |
+| Pixels | `width_px`, `height_px` (required), `x_px`, `y_px` (optional) | pixels; without `x_px`/`y_px` the crop is centred |
 
 ## Rules
 - The origin (0, 0) is the **top-left** corner; x grows right, y grows down.
@@ -19,7 +18,7 @@ description: Coordinate systems, centring and validation rules for crop_image.
 - Never mix forms in one call.
 
 ## Common requests
-- "Center square crop": use the crop box with only `width` and `height` equal to the shorter side.
+- "Center square crop": pixel form with only `width_px` and `height_px`, both equal to the shorter side.
 - "Left half": percent form `x 0, y 0, width 50, height 100`.
 - "Remove 10% border": percent form `x 10, y 10, width 80, height 80`.
 

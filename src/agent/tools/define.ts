@@ -54,8 +54,7 @@ export function defineTool<I, O>(def: ToolDefinition<I, O>): RegisteredTool {
       tool<unknown, unknown, Record<string, unknown>>({
         description: def.description,
         inputSchema: zodSchema(def.input as z.ZodType),
-        execute: (input, { toolCallId }) =>
-          runToolCall(def, turn, def.input.parse(input), toolCallId),
+        execute: (input, { toolCallId }) => runToolCall(def, turn, input, toolCallId),
       }),
   };
 }
@@ -77,9 +76,11 @@ export function buildTools(tools: readonly RegisteredTool[], ctx: TurnContext): 
 async function runToolCall<I, O>(
   def: ToolDefinition<I, O>,
   turn: Turn,
-  input: I,
+  rawInput: unknown,
   toolCallId: string,
 ): Promise<O> {
+  // Also fills defaults (e.g. gpt_image_2's Low quality) before the input is stored.
+  const input = def.input.parse(rawInput);
   const call = await toolRepository.start({
     runId: turn.runId,
     messageId: turn.messageId,

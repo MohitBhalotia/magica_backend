@@ -12,6 +12,8 @@ type NewInvocation = {
   inputSanitized: Prisma.InputJsonValue;
 };
 
+type NewAsset = Omit<Prisma.AssetUncheckedCreateInput, "id" | "invocationId" | "createdAt">;
+
 const finished = (startedAt: Date) => ({
   completedAt: new Date(),
   durationMs: Date.now() - startedAt.getTime(),
@@ -64,6 +66,13 @@ export const toolRepository = {
         ...finished(row.startedAt),
       },
     }),
+
+  /** A media call's outputs. Replaces any saved earlier, so a retried call doesn't duplicate them. */
+  saveAssets: (invocationId: string, assets: NewAsset[]) =>
+    prisma.$transaction([
+      prisma.asset.deleteMany({ where: { invocationId } }),
+      prisma.asset.createMany({ data: assets.map((asset) => ({ ...asset, invocationId })) }),
+    ]),
 
   /**
    * Records a skill load for the run; true only for the first load. Parallel tool calls can race,
