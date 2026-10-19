@@ -47,6 +47,7 @@
     "@upstash/ratelimit": "2.2.0",
     "@upstash/redis": "1.39.0",
     "ai": "7.0.143",
+    "aws4fetch": "1.0.20",
     "next": "16.4.2",
     "pg": "8.23.1",
     "pino": "10.4.0",

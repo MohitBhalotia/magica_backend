@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { CoreEnvSchema } from "@/lib/coreEnv";
+import { R2EnvSchema } from "@/providers/r2";
 
 // API (route handlers) env. Keys become required in the milestone that first uses them (see .env.example).
 export const EnvSchema = CoreEnvSchema.extend({
@@ -17,6 +18,11 @@ export const EnvSchema = CoreEnvSchema.extend({
   UPSTASH_REDIS_TOKEN: z.string().min(1),
   // Read by @trigger.dev/sdk to dispatch `agent-turn` and mint run tokens; validated so boot fails early.
   TRIGGER_SECRET_KEY: z.string().startsWith("tr_"),
+  // Uploads (M5): Transloadit signs upload jobs (this key requires sha256 signatures); files land in
+  // a private R2 bucket and are read through short-lived signed URLs.
+  TRANSLOADIT_KEY: z.string().trim().min(1),
+  TRANSLOADIT_SECRET: z.string().trim().min(1),
+  ...R2EnvSchema.shape,
 });
 
 export type Env = z.infer<typeof EnvSchema>;

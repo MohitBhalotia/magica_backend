@@ -18,6 +18,13 @@ export default defineConfig({
       // Magica is mocked with MSW in tests; this host never receives a real request.
       MAGICA_API_KEY: "gx_test_dummy",
       MAGICA_BASE_URL: "https://magica.test/v1",
+      // Uploads: Transloadit and R2 are faked in tests (MSW); these are test values only.
+      TRANSLOADIT_KEY: "tl_test_key",
+      TRANSLOADIT_SECRET: "tl_test_secret",
+      R2_ACCOUNT_ID: "0123456789abcdef0123456789abcdef",
+      R2_BUCKET: "test-bucket",
+      R2_ACCESS_KEY_ID: "r2_test_key",
+      R2_SECRET_ACCESS_KEY: "r2_test_secret",
       LOG_LEVEL: "silent",
     },
     projects: [
