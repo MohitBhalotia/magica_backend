@@ -6,10 +6,27 @@
     "primary": "#2b2b2b"
   },
   "navigation": {
-    "groups": [
+    "tabs": [
       {
-        "group": "Get started",
-        "pages": ["index"]
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Get started",
+            "pages": ["index", "quickstart", "authentication"]
+          },
+          {
+            "group": "Using the agent",
+            "pages": ["chats", "completions", "tools", "runs"]
+          },
+          {
+            "group": "Reference",
+            "pages": ["webhooks", "errors", "limits"]
+          }
+        ]
+      },
+      {
+        "tab": "API reference",
+        "openapi": "openapi.json"
       }
     ]
   }

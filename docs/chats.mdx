@@ -1,0 +1,41 @@
+---
+title: "Chats and messages"
+description: "The same conversations you see in the app."
+---
+
+A **chat** is a conversation. Sending a **message** starts a **run**: the agent's reply, which may call tools.
+
+## Start a chat
+
+```bash
+curl -X POST https://magica-galaxy-backend.vercel.app/api/v1/chats \
+  -H "Authorization: Bearer $MAGICA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -d '{"text": "Make a logo for a coffee shop called Bean There"}'
+```
+
+The response (`201`) has the new `chatId`, your message's id, the reply's id, and the `run` to follow:
+
+```json
+{
+  "chatId": "<the Idempotency-Key>",
+  "userMessageId": "…",
+  "assistantMessageId": "…",
+  "run": { "runId": "cmv…", "status": "queued", "waitpoint": null }
+}
+```
+
+## Follow-ups
+
+`POST /chats/{chatId}/messages` with the same body. Only one reply runs per chat at a time: while one is running you get `409 RUN_ACTIVE`, with `details.activeRunId`.
+
+## Read a chat
+
+`GET /chats/{chatId}` returns the chat, its newest 50 messages (newest first) and `activeRun`. For older messages, pass the `nextCursor` you got back as `?cursor=`.
+
+Each reply's `contentBlocks` holds what the agent did: its text, its reasoning, and every tool step with its input and output, including generated image and video URLs.
+
+## Attachments
+
+Files are uploaded through the app. Pass their ids as `attachmentIds` to send them with a message, for example images to edit or videos to merge.

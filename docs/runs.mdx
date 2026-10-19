@@ -1,0 +1,54 @@
+---
+title: "Runs: long-running replies"
+description: "Poll, wait on approvals, stop and retry."
+---
+
+Every reply is a **run**. Most finish in seconds, but a video merge or a high-quality image can take minutes. A run can also stop to ask you something. The run survives all of this: closing your connection doesn't stop it, and its state is always in our database.
+
+## Statuses
+
+`queued` → `thinking` → `working` → `completed`. A run can also be `waiting` (on you), `stopping`, `failed` or `cancelled`. Only `completed`, `failed` and `cancelled` are final.
+
+## Polling or webhooks
+
+<CardGroup cols={2}>
+  <Card title="Poll" icon="arrows-rotate">
+    `GET /runs/{runId}` every few seconds until the status is final. Then read the result with `GET
+    /chats/{chatId}`. Simple, and fine for scripts.
+  </Card>
+  <Card title="Webhooks" icon="bell" href="/webhooks">
+    Register an endpoint once. We POST `agent.completed` or `agent.failed` when each run ends. Best
+    for servers.
+  </Card>
+</CardGroup>
+
+## Approvals
+
+Before a tool that costs more than 0.05 credits, or whose cost Magica can't estimate, the run pauses with `status: "waiting"` and a `waitpoint`. The agent can also ask a question or propose a plan the same way:
+
+```json
+{
+  "status": "waiting",
+  "waitpoint": {
+    "id": "wp_…",
+    "type": "credit_approval",
+    "request": { "tool": "gpt_image_2", "estimateMicro": 270000, "balanceMicro": 995000 },
+    "expiresAt": "…"
+  }
+}
+```
+
+Answer with `POST /waitpoints/{id}/respond`:
+
+| `type`            | `response`                                     |
+| ----------------- | ---------------------------------------------- |
+| `credit_approval` | `{ "approved": true }`                         |
+| `options`         | `{ "choice": "<one of request.options>" }`     |
+| `plan_approval`   | `{ "approved": true, "feedback": "optional" }` |
+
+The run resumes exactly once; answering again returns the first answer. If nobody answers within 15 minutes, the waitpoint expires and the agent carries on without the step.
+
+## Stop and retry
+
+- **Stop:** `POST /runs/{runId}/cancel`. The run becomes `stopping`, then `cancelled`, and the answer so far is kept.
+- **Retry:** `POST /runs/{runId}/retry` re-runs the chat's latest failed or stopped reply as a new run.

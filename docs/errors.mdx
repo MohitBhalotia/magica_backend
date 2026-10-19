@@ -1,0 +1,38 @@
+---
+title: "Errors"
+description: "One envelope, a closed set of codes."
+---
+
+Every error has the same shape:
+
+```json
+{
+  "error": {
+    "code": "RUN_ACTIVE",
+    "message": "A reply is already in progress in this chat.",
+    "details": { "activeRunId": "cmv…" },
+    "traceId": "f3b1…"
+  }
+}
+```
+
+`message` is safe to show to your users. Include `traceId` when you report a problem. `details` adds context for some codes. A failed run stores the same `code` and `message` on its reply.
+
+| Code                                                                                         | HTTP | Meaning                                                              |
+| -------------------------------------------------------------------------------------------- | ---- | -------------------------------------------------------------------- |
+| `VALIDATION_FAILED`                                                                          | 400  | A field is missing or wrong (`details.issues`).                      |
+| `UNSUPPORTED_MODEL`                                                                          | 400  | Only `openrouter/free` is available.                                 |
+| `UNAUTHENTICATED`                                                                            | 401  | No key, or a key that's unknown or revoked.                          |
+| `INSUFFICIENT_CREDITS`                                                                       | 402  | Not enough credits to start, or for this tool.                       |
+| `UPLOAD_QUOTA_EXCEEDED`                                                                      | 403  | The month's upload allowance is used up.                             |
+| `NOT_FOUND`                                                                                  | 404  | It doesn't exist, or it isn't yours.                                 |
+| `RUN_ACTIVE`                                                                                 | 409  | A reply is already running in this chat (`details.activeRunId`).     |
+| `APPROVAL_DECLINED`                                                                          | 409  | A cost or plan was declined; the step didn't run.                    |
+| `WAITPOINT_CLOSED`                                                                           | 409  | That question was already answered, expired or cancelled.            |
+| `WAITPOINT_EXPIRED`                                                                          | 410  | Nobody answered in time.                                             |
+| `INVALID_TOOL_INPUT`                                                                         | 422  | The tool input doesn't fit the tool (`details.issues`).              |
+| `RATE_LIMITED`                                                                               | 429  | Slow down; see the `Retry-After` header.                             |
+| `INTERNAL`, `STALE`                                                                          | 500  | Something broke on our side, or a reply stopped unexpectedly. Retry. |
+| `EMPTY_RESPONSE`, `PROVIDER_ERROR`, `PROVIDER_AUTH`, `PROVIDER_CREDITS`, `GENERATION_FAILED` | 502  | The model or Magica failed.                                          |
+| `MODEL_UNAVAILABLE`, `PROVIDER_RATE_LIMITED`                                                 | 503  | The free model or Magica is busy. Try again shortly.                 |
+| `GENERATION_TIMEOUT`                                                                         | 504  | Magica took too long (over 15 minutes).                              |

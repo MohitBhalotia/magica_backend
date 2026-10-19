@@ -1,0 +1,49 @@
+---
+title: "Running tools"
+description: "Call the Magica media tools directly."
+---
+
+`POST /tools/{tool}/run` runs one tool with your input, without asking the model. It's an ordinary run, so the same rules apply as in chat:
+
+- **Credits:** the cost is reserved, then charged or released.
+- **Approvals:** expensive calls, or calls whose cost is unknown, wait for an approval.
+- **The chat:** the result appears in the chat.
+
+```bash
+curl -X POST https://magica-galaxy-backend.vercel.app/api/v1/tools/crop_image/run \
+  -H "Authorization: Bearer $MAGICA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"input": {"image_url": "https://upload.wikimedia.org/wikipedia/commons/a/a9/Example.jpg", "width_percent": 50, "height_percent": 50}}'
+```
+
+The answer is `202` with the run. Tools take seconds to minutes, so follow the run by [polling it or with webhooks](/runs). The result is the run's tool step, in the chat's last reply: `contentBlocks[].output.assets`. Pass `chat_id` to run the tool in an existing chat.
+
+An input that doesn't fit the tool is `422 INVALID_TOOL_INPUT` with the issues, and nothing is started or charged. Any other tool name is `404`.
+
+## `crop_image`
+
+`image_url` (a public HTTPS image) and **exactly one** rectangle:
+
+| Form        | Fields                                                                              |
+| ----------- | ----------------------------------------------------------------------------------- |
+| Percent     | `x_percent`, `y_percent`, `width_percent`, `height_percent` (0–100)                 |
+| Pixels      | `width_px`, `height_px` (required), `x_px`, `y_px` (optional: centred without them) |
+| Crop object | `crop: { x, y, width, height }` in pixels (`width`, `height` required)              |
+
+## `gpt_image_2`
+
+| Field                              |                                                                                       |
+| ---------------------------------- | ------------------------------------------------------------------------------------- |
+| `mode`                             | `text` for a new image, `edit` to change `uploadedImages`                             |
+| `prompt`                           | Up to 4,000 characters                                                                |
+| `uploadedImages`                   | Edit mode only: 1–10 public HTTPS image URLs                                          |
+| `size`                             | `Auto`, `1024x1024`, `1536x1024`, `1024x1536`, … or `{ width, height }`               |
+| `quality`                          | `Low` (default, about 0.0076 credits at 1024²), `Medium`, `High` (about 0.27 credits) |
+| `n`, `background`, `output_format` | Optional: 1–4 images, `Auto`/`Opaque`, `PNG`/`JPEG`/`WebP`                            |
+
+## `merge_videos`
+
+| Field        |                                                     |
+| ------------ | --------------------------------------------------- |
+| `video_urls` | 2–100 public HTTPS video URLs, joined in this order |
+| `transition` | `none` (default), `fade` or `dissolve`              |

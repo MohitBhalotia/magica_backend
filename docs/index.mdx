@@ -3,12 +3,22 @@ title: "Introduction"
 description: "Talk to the Magica agent and run its media tools over a versioned REST API."
 ---
 
-The Magica Agent API lets your code do what the app does:
+The Magica Agent API gives your code what the app has:
 
-- send messages to the agent;
-- use OpenAI-style chat completions;
-- run the crop, GPT Image 2 and merge tools;
-- follow long-running runs;
-- receive signed webhooks.
+- **Chats.** Send messages to the agent and read the conversation back.
+- **Chat completions.** An OpenAI-compatible endpoint, streaming or not, so existing OpenAI clients work.
+- **Tools.** Run `crop_image`, `gpt_image_2` (new images or edits) and `merge_videos` directly, with the same credits and approvals as in chat.
+- **Runs.** Every reply is a durable run you can poll, stop or retry. Some take minutes, for example a video merge or an approval.
+- **Webhooks.** Get signed `agent.started`, `agent.completed`, `agent.failed` and `tool.completed` events.
 
-The full reference is on its way.
+Everything is under `https://magica-galaxy-backend.vercel.app/api/v1`. Bodies are JSON, and amounts are **microcredits** (1,000,000 = 1 credit).
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    A key and your first completion in two minutes.
+  </Card>
+  <Card title="API reference" icon="code" href="/completions">
+    Every endpoint is in the **API reference** tab, generated from the same schemas the API
+    validates with.
+  </Card>
+</CardGroup>
