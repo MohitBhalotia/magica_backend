@@ -191,6 +191,13 @@ describe("credit approval", () => {
     expect(
       await db.creditLedger.count({ where: { runId: ctx.runId, invocationId: { not: null } } }),
     ).toBe(0);
+
+    // The model retries the same call: declined again without asking the user a second time.
+    await expect(call("gpt_image_2", highQuality)).rejects.toMatchObject({
+      code: "APPROVAL_DECLINED",
+    });
+    expect(await db.waitpoint.count({ where: { runId: ctx.runId } })).toBe(1);
+    expect(runs).toHaveLength(0);
   });
 
   it("an unknown cost asks too, and an approved run goes ahead", async () => {
