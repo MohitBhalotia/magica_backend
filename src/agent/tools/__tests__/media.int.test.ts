@@ -91,12 +91,25 @@ describe("gpt_image_2", () => {
     expect(posts[0]?.input).not.toHaveProperty("mode");
     expect(result).toEqual({
       assets: [
-        { kind: "image", url: output.result[0], mimeType: "image/png", width: 1024, height: 1024 },
+        {
+          kind: "image",
+          url: output.result[0],
+          mimeType: "image/png",
+          width: 1024,
+          height: 1024,
+          sizeBytes: 1409305,
+        },
       ],
       creditUsed: 7644,
     });
     expect(await assets()).toMatchObject([
-      { kind: "image", url: output.result[0], prompt: "a red apple", model: "gpt-image-2-text" },
+      {
+        kind: "image",
+        url: output.result[0],
+        prompt: "a red apple",
+        model: "gpt-image-2-text",
+        sizeBytes: 1409305n,
+      },
     ]);
   });
 

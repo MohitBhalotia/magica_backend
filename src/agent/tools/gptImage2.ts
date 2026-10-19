@@ -39,7 +39,14 @@ const GptImageInput = z
 const GptImageOutput = z.object({
   result: z.array(z.url()).min(1),
   resultMetadata: z
-    .array(z.object({ width: z.number(), height: z.number(), mimeType: z.string() }))
+    .array(
+      z.object({
+        width: z.number(),
+        height: z.number(),
+        mimeType: z.string(),
+        size: z.number().optional(),
+      }),
+    )
     .default([]),
 });
 
@@ -61,6 +68,7 @@ export const gptImage2Tool = defineTool({
           mimeType: resultMetadata[i]?.mimeType ?? "image/png",
           width: resultMetadata[i]?.width,
           height: resultMetadata[i]?.height,
+          sizeBytes: resultMetadata[i]?.size,
         })),
       prompt: input.prompt,
     }),

@@ -5,6 +5,7 @@ import {
   SendMessageRequestSchema,
   SearchQuerySchema,
   UpdateChatRequestSchema,
+  type ChatAssetList,
   type ChatDetail,
   type ChatList,
   type ChatSummary,
@@ -14,7 +15,7 @@ import {
 
 import { enforceRateLimit } from "@/lib/rateLimiter";
 import { withHandler } from "@/lib/withHandler";
-import { toChatSummary, toMessage, toSearchResult } from "@/modules/chats/chat.mapper";
+import { toChatAsset, toChatSummary, toMessage, toSearchResult } from "@/modules/chats/chat.mapper";
 import { chatService } from "@/modules/chats/chat.service";
 
 type ChatParams = { chatId: string };
@@ -50,6 +51,12 @@ export const searchChats = withHandler(async (req, { userId }) => {
   const page = await chatService.search(userId, q, limit, cursor);
   const items = page.items.map((c) => toSearchResult(c, q));
   return NextResponse.json<SearchResultList>({ ...page, items });
+});
+
+export const listChatAssets = withHandler<ChatParams>(async (req, { userId, params }) => {
+  const { limit, cursor } = PageQuerySchema.parse(query(req));
+  const page = await chatService.assets((await params).chatId, userId, limit, cursor);
+  return NextResponse.json<ChatAssetList>({ ...page, items: page.items.map(toChatAsset) });
 });
 
 export const getChat = withHandler<ChatParams>(async (req, { userId, params }) => {
